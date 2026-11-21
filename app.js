@@ -111,10 +111,11 @@ const MODES = [
   },
   {
     id: 'numbers', group: 'Числа', title: 'Числа', sub: 'от нуля до миллиона', kind: 'input', inputmode: 'numeric', placeholder: 'число',
-    options: [DIR, { key: 'range', label: 'Диапазон', values: [['20', '0–20'], ['100', '0–100'], ['1000', '100–999'], ['1e4', '1 000–9 999'], ['1e6', 'до 1 млн']] }],
+    options: [DIR, { key: 'range', label: 'Диапазон', values: [['9', '0–9'], ['10-20', '10–20'], ['100', '0–100'], ['1000', '100–999'], ['1e4', '1 000–9 999'], ['1e6', 'до 1 млн']] }],
     gen(o) {
       let n;
-      if (o.range === '20') n = rnd(0, 20);
+      if (o.range === '9') n = rnd(0, 9);
+      else if (o.range === '10-20') n = rnd(10, 20);
       else if (o.range === '100') n = rnd(0, 100);
       else if (o.range === '1000') n = rnd(100, 999);
       else if (o.range === '1e4') n = rnd(1000, 9999);
