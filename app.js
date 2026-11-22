@@ -9,6 +9,15 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const digits = s => s.replace(/\D/g, '');
 const fmtInt = n => n.toLocaleString('ru-RU').replace(/ /g, ' ');
 const pad2 = n => String(n).padStart(2, '0');
+const lower = L => pick(L.lo.split(' / '));
+const oneCase = L => (Math.random() < 0.5 ? L.up : lower(L));
+const digraphCase = g => {
+  const d = pick(g.split(' / '));
+  const r = Math.random();
+  if (r < 0.4) return d;
+  if (r < 0.8) return d[0].toUpperCase() + d.slice(1);
+  return d.toUpperCase();
+};
 
 function load(key, def) {
   try { const v = JSON.parse(localStorage.getItem(key)); return v ?? def; } catch { return def; }
@@ -61,9 +70,9 @@ const MODES = [
       const L = pick(LETTERS);
       const opts = choicesFrom(L, LETTERS, x => x.sound);
       return {
-        prompt: `<span class="big greek">${L.up} ${L.lo}</span>`,
+        prompt: `<span class="big greek">${oneCase(L)}</span>`,
         choices: opts.map(o => ({ label: o.sound, ok: o === L })),
-        answer: L.sound,
+        answer: `${L.up} ${L.lo} — ${L.sound}`,
         greek: `${L.name} (${L.ru})`,
         sayAfter: L.name,
       };
@@ -78,7 +87,7 @@ const MODES = [
       const opts = choicesFrom(L, LETTERS, x => x.up);
       return {
         say: L.name,
-        choices: opts.map(o => ({ label: `${o.up} ${o.lo}`, ok: o === L, greek: true })),
+        choices: opts.map(o => ({ label: oneCase(o), ok: o === L, greek: true })),
         answer: `${L.up} ${L.lo}`,
         greek: `${L.name} (${L.ru})`,
       };
@@ -91,9 +100,9 @@ const MODES = [
       const D = pick(DIGRAPHS);
       const opts = choicesFrom(D, DIGRAPHS, x => x.sound);
       return {
-        prompt: `<span class="big greek">${D.g}</span>`,
+        prompt: `<span class="big greek">${digraphCase(D.g)}</span>`,
         choices: opts.map(o => ({ label: o.sound, ok: o === D })),
-        answer: D.sound,
+        answer: `${D.g} — ${D.sound}`,
         greek: `пример: ${D.ex}`,
         sayAfter: D.ex.split(',')[0],
       };
