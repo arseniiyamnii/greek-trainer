@@ -1,4 +1,4 @@
-const CACHE = 'gt-v13';
+const CACHE = 'gt-v15';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'greek.js', 'data.js', 'version.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
