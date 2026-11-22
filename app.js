@@ -26,7 +26,7 @@ function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true }, load('gt.settings', {}));
+const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true }, load('gt.settings', {}));
 const stats = load('gt.stats', {});
 const modeOpts = load('gt.opts', {});
 
@@ -343,7 +343,22 @@ function isListen(q) {
   return !!mode.listen;
 }
 
+let autoTimer = null;
+function scheduleAutoNext() {
+  clearTimeout(autoTimer);
+  const s = session;
+  const started = Date.now();
+  const tick = () => {
+    if (session !== s || !s.done) return;
+    const speaking = window.speechSynthesis?.speaking && Date.now() - started < 6000;
+    if (speaking || Date.now() - started < 900) autoTimer = setTimeout(tick, 150);
+    else autoTimer = setTimeout(() => { if (session === s && s.done) nextQuestion(); }, 350);
+  };
+  autoTimer = setTimeout(tick, 150);
+}
+
 function nextQuestion() {
+  clearTimeout(autoTimer);
   const s = session;
   s.count++;
   s.done = false;
@@ -424,6 +439,7 @@ function showFeedback(ok, given) {
   $('#nextBtn')?.focus({ preventScroll: true });
   $('#feedback').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   if (q.sayAfter || mode.kind === 'card' || (mode.kind === 'input' && !isListen(q))) speak(q.sayAfter || q.say);
+  if (ok === true && settings.autoNext) scheduleAutoNext();
 }
 
 view.addEventListener('click', e => {
@@ -467,6 +483,7 @@ function renderSettings() {
         <input type="range" id="rate" min="0.5" max="1.3" step="0.05" value="${settings.rate}">
       </label>
       <label class="row"><input type="checkbox" id="autoplay" ${settings.autoplay ? 'checked' : ''}> Проигрывать задание сразу</label>
+      <label class="row"><input type="checkbox" id="autoNext" ${settings.autoNext ? 'checked' : ''}> Сразу дальше после правильного ответа</label>
       <button class="wide" id="test">🔊 Проверить голос</button>
       <button class="wide ghost" id="reset">Сбросить статистику</button>
       <p class="hint">Установить как приложение: меню Chrome ⋮ → «Добавить на главный экран». После первой загрузки работает без интернета.</p>
@@ -474,12 +491,13 @@ function renderSettings() {
   $('#voice').onchange = e => { settings.voice = e.target.value; save('gt.settings', settings); };
   $('#rate').oninput = e => { settings.rate = +e.target.value; $('#rateV').textContent = settings.rate.toFixed(2); save('gt.settings', settings); };
   $('#autoplay').onchange = e => { settings.autoplay = e.target.checked; save('gt.settings', settings); };
+  $('#autoNext').onchange = e => { settings.autoNext = e.target.checked; save('gt.settings', settings); };
   $('#test').onclick = () => speak('Καλημέρα! Δεκατέσσερα ευρώ και εβδομήντα λεπτά.');
   $('#reset').onclick = () => { if (confirm('Сбросить статистику?')) { for (const k in stats) delete stats[k]; save('gt.stats', stats); } };
 }
 
 backBtn.addEventListener('click', () => { if (history.length > 1) history.back(); else location.hash = ''; });
-window.addEventListener('hashchange', () => { session = null; render(); });
+window.addEventListener('hashchange', () => { clearTimeout(autoTimer); session = null; render(); });
 render();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
