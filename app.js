@@ -73,11 +73,11 @@ const MODES = [
         prompt: `<span class="big greek">${oneCase(L)}</span>`,
         choices: opts.map(o => ({ label: o.sound, ok: o === L })),
         answer: `${L.up} ${L.lo} — ${L.sound}`,
-        greek: `${L.name} (${L.ru})`,
+        greek: `${L.name} (${L.ru})${L.note ? ` · ${L.note}` : ''}`,
         sayAfter: L.name,
       };
     },
-    cheat: () => `<table>${LETTERS.map(l => `<tr><td class="greek">${l.up} ${l.lo}</td><td>${l.ru}</td><td>${l.sound}</td></tr>`).join('')}</table>
+    cheat: () => `<table>${LETTERS.map(l => `<tr><td class="greek">${l.up} ${l.lo}</td><td>${l.ru}</td><td>${l.sound}${l.note ? `<br><small>${l.note}</small>` : ''}</td></tr>`).join('')}</table>
       <p>Звук «и» дают сразу пять написаний: η, ι, υ, ει, οι. Звук «о» — ο и ω. Ударение ставится всегда (знак ´), кроме односложных слов.</p>`,
   },
   {
@@ -103,11 +103,11 @@ const MODES = [
         prompt: `<span class="big greek">${digraphCase(D.g)}</span>`,
         choices: opts.map(o => ({ label: o.sound, ok: o === D })),
         answer: `${D.g} — ${D.sound}`,
-        greek: `пример: ${D.ex}`,
+        greek: `${D.note ? `${D.note} · ` : ''}пример: ${D.ex}`,
         sayAfter: D.ex.split(',')[0],
       };
     },
-    cheat: () => `<table>${DIGRAPHS.map(d => `<tr><td class="greek">${d.g}</td><td>${d.sound}</td><td class="greek">${d.ex}</td></tr>`).join('')}</table>
+    cheat: () => `<table>${DIGRAPHS.map(d => `<tr><td class="greek">${d.g}</td><td>${d.sound}${d.note ? `<br><small>${d.note}</small>` : ''}</td><td class="greek">${d.ex}</td></tr>`).join('')}</table>
       <p>αυ/ευ читаются «ав/эв» перед гласными и звонкими (αυγό, ευρώ), «аф/эф» — перед глухими (αυτοκίνητο, ευχαριστώ).</p>`,
   },
   {
