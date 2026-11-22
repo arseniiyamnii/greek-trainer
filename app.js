@@ -206,7 +206,7 @@ const MODES = [
     cheat: () => `<p>αυ/ευ читаются «ав/эв» перед гласными и звонкими (αυγό, ευρώ), «аф/эф» — перед глухими (αυτοκίνητο, ευχαριστώ).</p>`,
   },
   {
-    id: 'digraphSounds', group: 'Алфавит', title: 'Сочетания на слух', sub: 'слушай слово → выбери', kind: 'choice', listen: true,
+    id: 'digraphSounds', group: 'Алфавит', title: 'Сочетания на слух', sub: 'слушай звук и слово → выбери', kind: 'choice', listen: true,
     size: () => DIGRAPHS.length,
     gen() {
       const D = pick(DIGRAPHS);
@@ -218,7 +218,7 @@ const MODES = [
       for (const o of pool) if (others.length < 3 && !others.some(x => x.hear === o.hear)) others.push(o);
       return {
         key: D.g,
-        say: w,
+        say: [D.syl, w],
         sayAfter: [D.syl, w],
         choices: shuffle([D, ...others]).map(o => ({ label: digraphCase(o.g), ok: o === D, greek: true })),
         answer: `${D.g} — ${D.sound}`,

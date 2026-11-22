@@ -1,1 +1,1 @@
-export const VERSION = { n: 21, date: '22.11 12:36' };
+export const VERSION = { n: 22, date: '22.11 15:16' };
