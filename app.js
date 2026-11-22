@@ -247,11 +247,30 @@ const MODES = [
   },
   {
     id: 'numbers', group: 'Числа', title: 'Числа', sub: 'от нуля до миллиона', kind: 'input', inputmode: 'numeric', placeholder: 'число',
-    options: [DIR, { key: 'range', label: 'Диапазон', values: [['9', '0–9'], ['10-20', '10–20'], ['100', '0–100'], ['1000', '100–999'], ['1e4', '1 000–9 999'], ['1e6', 'до 1 млн']] }],
-    size: o => ({ 9: 10, '10-20': 11, 100: 101, 1000: 900, '1e4': 9000 })[o.range] ?? null,
+    options: [DIR, { key: 'range', label: 'Диапазон', values: [['9', '0–9'], ['10-20', '10–20'], ['100', '0–100'], ['1000', '100–999'], ['1e4', '1 000–9 999'], ['1e6', 'до 1 млн'], ['custom', 'свой']] }],
+    defaults: { from: 0, to: 50 },
+    scopeExtra: o => (o.range === 'custom' ? `${o.from}-${o.to}` : ''),
+    size: o => (o.range === 'custom' ? o.to - o.from + 1 : ({ 9: 10, '10-20': 11, 100: 101, 1000: 900, '1e4': 9000 })[o.range] ?? null),
+    extra: o => (o.range === 'custom' ? `<form class="range" id="rangeForm">
+        <label>от <input id="rFrom" inputmode="numeric" autocomplete="off" value="${o.from}"></label>
+        <label>до <input id="rTo" inputmode="numeric" autocomplete="off" value="${o.to}"></label>
+        <button>OK</button></form>` : ''),
+    readExtra(o) {
+      const a = $('#rFrom'), b = $('#rTo');
+      if (!a || !b) return false;
+      let from = Math.min(+digits(a.value || '0'), 999999999), to = Math.min(+digits(b.value || '0'), 999999999);
+      if (from > to) [from, to] = [to, from];
+      a.value = from;
+      b.value = to;
+      if (from === o.from && to === o.to) return false;
+      o.from = from;
+      o.to = to;
+      return true;
+    },
     gen(o) {
       let n;
-      if (o.range === '9') n = rnd(0, 9);
+      if (o.range === 'custom') n = rnd(o.from, o.to);
+      else if (o.range === '9') n = rnd(0, 9);
       else if (o.range === '10-20') n = rnd(10, 20);
       else if (o.range === '100') n = rnd(0, 100);
       else if (o.range === '1000') n = rnd(100, 999);
@@ -423,10 +442,11 @@ function numbersCheat() {
 function optsFor(mode) {
   const o = { ...(modeOpts[mode.id] || {}) };
   for (const op of mode.options || []) if (!op.values.some(v => v[0] === o[op.key])) o[op.key] = op.values[0][0];
+  for (const [k, v] of Object.entries(mode.defaults || {})) if (o[k] === undefined) o[k] = v;
   return o;
 }
 
-const scopeId = (mode, o) => [mode.id, ...(mode.options || []).map(op => o[op.key])].join('|');
+const scopeId = (mode, o) => [mode.id, ...(mode.options || []).map(op => o[op.key]), mode.scopeExtra ? mode.scopeExtra(o) : ''].filter(Boolean).join('|');
 
 function learnedCount(mode, o) {
   return Object.values(items[scopeId(mode, o)] || {}).filter(v => v >= 2).length;
@@ -499,6 +519,7 @@ function renderMode(mode) {
   view.innerHTML = `
     <div class="opts">${(mode.options || []).map(op => `
       <div class="seg" data-key="${op.key}">${op.values.map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}</div>`).join('')}
+      <div id="extra"></div>
     </div>
     <div class="score"><span id="rep"></span><span id="progress"></span><a class="reflink" href="#/ref/${mode.id}">📖 Словарь</a></div>
     <div class="card" id="card"></div>
@@ -515,13 +536,34 @@ function renderMode(mode) {
       session.retry = [];
       session.seen = {};
       syncSegs();
+      renderExtra();
       nextQuestion();
     });
   });
+  renderExtra();
   $('#cheat')?.addEventListener('toggle', e => { if (e.target.open && !session.done) { session.cheated = true; updateScore(); } });
   syncSegs();
   if (restored) renderQuestion();
   else nextQuestion();
+}
+
+function renderExtra() {
+  const box = $('#extra');
+  const { mode, opts } = session;
+  if (!box || !mode.extra) return;
+  box.innerHTML = mode.extra(opts);
+  const f = $('#rangeForm');
+  if (!f) return;
+  const apply = () => {
+    if (!mode.readExtra(opts)) return;
+    modeOpts[mode.id] = opts;
+    save('gt.opts', modeOpts);
+    session.retry = [];
+    session.seen = {};
+    nextQuestion();
+  };
+  f.addEventListener('submit', e => { e.preventDefault(); apply(); document.activeElement?.blur(); });
+  f.querySelectorAll('input').forEach(i => i.addEventListener('change', apply));
 }
 
 function syncSegs() {
