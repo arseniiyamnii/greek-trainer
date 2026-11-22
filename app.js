@@ -114,6 +114,26 @@ const MODES = [
       <p>αυ/ευ читаются «ав/эв» перед гласными и звонкими (αυγό, ευρώ), «аф/эф» — перед глухими (αυτοκίνητο, ευχαριστώ).</p>`,
   },
   {
+    id: 'digraphSounds', group: 'Алфавит', title: 'Сочетания на слух', sub: 'слушай слово → выбери', kind: 'choice', listen: true,
+    gen() {
+      const D = pick(DIGRAPHS);
+      const [w, ru] = pick(D.words);
+      const plain = w.normalize('NFD').replace(/\u0301/g, '').normalize('NFC').toLowerCase();
+      const inWord = g => g.split(' / ').some(x => plain.includes(x));
+      const pool = shuffle(DIGRAPHS.filter(o => o.hear !== D.hear && !inWord(o.g)));
+      const others = [];
+      for (const o of pool) if (others.length < 3 && !others.some(x => x.hear === o.hear)) others.push(o);
+      return {
+        say: w,
+        choices: shuffle([D, ...others]).map(o => ({ label: pick(o.g.split(' / ')), ok: o === D, greek: true })),
+        answer: `${D.g} — ${D.sound}`,
+        greek: `${w} — ${ru}`,
+      };
+    },
+    cheat: () => `<table>${DIGRAPHS.map(d => `<tr><td class="greek">${d.g}</td><td>${d.sound}</td><td class="greek">${d.words.map(x => x[0]).join(', ')}</td></tr>`).join('')}</table>
+      <p>ει и οι звучат одинаково («и»), как и γκ с γγ в середине слова («нг») — поэтому вместе в вариантах они не встречаются.</p>`,
+  },
+  {
     id: 'reading', group: 'Алфавит', title: 'Чтение', sub: 'вывески, меню, города', kind: 'card',
     gen() {
       const [w, tr, ru] = pick(WORDS);
