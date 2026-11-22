@@ -484,10 +484,13 @@ function renderHome() {
 }
 
 let session = null;
+let parked = null;
 
 function renderMode(mode) {
   title.textContent = mode.title;
-  session = { mode, opts: optsFor(mode), ok: 0, total: 0, count: 0, retry: [], q: null, done: false, answered: false };
+  const restored = parked && parked.mode === mode && parked.q && !parked.done ? parked : null;
+  parked = null;
+  session = restored || { mode, opts: optsFor(mode), ok: 0, total: 0, count: 0, retry: [], q: null, done: false, answered: false };
   view.innerHTML = `
     <div class="opts">${(mode.options || []).map(op => `
       <div class="seg" data-key="${op.key}">${op.values.map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}</div>`).join('')}
@@ -509,9 +512,10 @@ function renderMode(mode) {
       nextQuestion();
     });
   });
-  $('#cheat')?.addEventListener('toggle', e => { if (e.target.open && !session.done) session.cheated = true; });
+  $('#cheat')?.addEventListener('toggle', e => { if (e.target.open && !session.done) { session.cheated = true; updateScore(); } });
   syncSegs();
-  nextQuestion();
+  if (restored) renderQuestion();
+  else nextQuestion();
 }
 
 function syncSegs() {
@@ -522,7 +526,7 @@ function syncSegs() {
 
 function updateScore() {
   const s = session;
-  $('#rep').innerHTML = s.q?.repeat ? '↻ повтор' : '';
+  $('#rep').innerHTML = [s.q?.repeat ? '↻ повтор' : '', s.cheated && !s.done ? '<span class="peek">👀 подсмотрено</span>' : ''].filter(Boolean).join(' ');
   $('#progress').textContent = `${progressText(s.mode, s.opts)}${s.total ? ` · ✓ ${s.ok}/${s.total}` : ''}`;
 }
 
@@ -629,7 +633,7 @@ function showFeedback(ok, given, cheated = false) {
   const { mode, q } = session;
   session.answered = true;
   const greekText = q.say && mode.kind === 'input' ? q.say : q.greek;
-  const head = ok === null ? '' : ok && cheated ? `<div class="res cheat">Верно, но со шпаргалкой — не засчитано</div>` : ok ? `<div class="res ok">Верно</div>` : given === null ? `<div class="res bad">Не знаю</div>` : `<div class="res bad">Неверно${given ? `: <s>${esc(given)}</s>` : ''}</div>`;
+  const head = ok === null ? '' : ok && cheated ? `<div class="res cheat">Верно, но с подсказкой — не засчитано</div>` : ok ? `<div class="res ok">Верно</div>` : given === null ? `<div class="res bad">Не знаю</div>` : `<div class="res bad">Неверно${given ? `: <s>${esc(given)}</s>` : ''}</div>`;
   $('#feedback').innerHTML = `
     <div class="fb ${ok === false ? 'bad' : ok && cheated ? 'cheat' : ok ? 'ok' : ''}">
       ${head}
@@ -788,7 +792,19 @@ function renderSettings(modeId) {
 }
 
 backBtn.addEventListener('click', () => { if (history.length > 1) history.back(); else location.hash = ''; });
-window.addEventListener('hashchange', () => { clearTimeout(autoTimer); autoToken++; session = null; render(); });
+window.addEventListener('hashchange', () => {
+  clearTimeout(autoTimer);
+  autoToken++;
+  const r = route();
+  if (session && r.id === session.mode.id && (r.name === 'ref' || r.name === 'settings')) {
+    parked = session;
+    if (r.name === 'ref' && !session.done) parked.cheated = true;
+  } else if (!parked || r.id !== parked.mode.id) {
+    parked = null;
+  }
+  session = null;
+  render();
+});
 render();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {

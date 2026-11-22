@@ -182,3 +182,4 @@ table.ref td.lg { font-size: 24px; white-space: nowrap; }
 .fb.cheat { background: var(--warn-soft); border-color: var(--line); }
 .res.cheat { color: var(--text); }
 .cheat summary small { font-weight: 400; color: var(--muted); }
+.peek { color: var(--muted); font-weight: 400; }
