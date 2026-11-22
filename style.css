@@ -179,3 +179,6 @@ table.ref td.lg { font-size: 24px; white-space: nowrap; }
 .own { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
 .wide.ghost2 { background: none; color: var(--text); border: 1px solid var(--line); margin-top: 10px; }
 .top a[hidden] { display: none; }
+.fb.cheat { background: var(--warn-soft); border-color: var(--line); }
+.res.cheat { color: var(--text); }
+.cheat summary small { font-weight: 400; color: var(--muted); }

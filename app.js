@@ -496,7 +496,7 @@ function renderMode(mode) {
     <div class="card" id="card"></div>
     <div id="answer"></div>
     <div id="feedback"></div>
-    ${mode.cheat ? `<details class="cheat"><summary>Шпаргалка</summary><div>${mode.cheat()}</div></details>` : ''}`;
+    ${mode.cheat ? `<details class="cheat" id="cheat"><summary>Шпаргалка <small>· с ней ответ не засчитывается</small></summary><div>${mode.cheat()}</div></details>` : ''}`;
   view.querySelectorAll('.seg').forEach(seg => {
     seg.addEventListener('click', e => {
       const b = e.target.closest('button');
@@ -509,6 +509,7 @@ function renderMode(mode) {
       nextQuestion();
     });
   });
+  $('#cheat')?.addEventListener('toggle', e => { if (e.target.open && !session.done) session.cheated = true; });
   syncSegs();
   nextQuestion();
 }
@@ -557,6 +558,9 @@ function nextQuestion() {
   s.count++;
   s.done = false;
   s.answered = false;
+  s.cheated = false;
+  const ch = $('#cheat');
+  if (ch) ch.open = false;
   const due = s.retry.findIndex(r => r.due <= s.count && r.q !== s.q);
   if (due >= 0) {
     s.q = s.retry.splice(due, 1)[0].q;
@@ -600,6 +604,9 @@ function grade(ok, given, feedback = true) {
   const s = session;
   if (s.done) return;
   s.done = true;
+  const cheated = !!s.cheated;
+  const raw = ok;
+  ok = ok && !cheated;
   s.total++;
   if (ok) s.ok++;
   const q = s.q;
@@ -615,16 +622,16 @@ function grade(ok, given, feedback = true) {
   save('gt.stats', stats);
   recordItem(s.mode, s.opts, q.key, ok);
   updateScore();
-  if (feedback) showFeedback(ok, given);
+  if (feedback) showFeedback(raw, given, cheated);
 }
 
-function showFeedback(ok, given) {
+function showFeedback(ok, given, cheated = false) {
   const { mode, q } = session;
   session.answered = true;
   const greekText = q.say && mode.kind === 'input' ? q.say : q.greek;
-  const head = ok === null ? '' : ok ? `<div class="res ok">Верно</div>` : given === null ? `<div class="res bad">Не знаю</div>` : `<div class="res bad">Неверно${given ? `: <s>${esc(given)}</s>` : ''}</div>`;
+  const head = ok === null ? '' : ok && cheated ? `<div class="res cheat">Верно, но со шпаргалкой — не засчитано</div>` : ok ? `<div class="res ok">Верно</div>` : given === null ? `<div class="res bad">Не знаю</div>` : `<div class="res bad">Неверно${given ? `: <s>${esc(given)}</s>` : ''}</div>`;
   $('#feedback').innerHTML = `
-    <div class="fb ${ok === false ? 'bad' : ok ? 'ok' : ''}">
+    <div class="fb ${ok === false ? 'bad' : ok && cheated ? 'cheat' : ok ? 'ok' : ''}">
       ${head}
       <div class="ans">${esc(q.answer)}</div>
       ${greekText ? `<div class="gr greek">${esc(greekText)}</div>` : ''}
@@ -649,7 +656,7 @@ function showFeedback(ok, given) {
   $('#nextBtn')?.focus({ preventScroll: true });
   $('#feedback').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   if (q.sayAfter || mode.kind === 'card' || (mode.kind === 'input' && !isListen())) speak(q.sayAfter || q.say);
-  if (ok === true && cfg().autoNext) scheduleAutoNext();
+  if (ok === true && !cheated && cfg().autoNext) scheduleAutoNext();
 }
 
 function renderRef(mode) {
