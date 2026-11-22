@@ -114,9 +114,15 @@ const MODES = [
     id: 'reading', group: 'Алфавит', title: 'Чтение', sub: 'вывески, меню, города', kind: 'card',
     gen() {
       const [w, tr, ru] = pick(WORDS);
-      return { prompt: `<span class="mid greek">${w}</span>`, hint: 'Прочитай вслух, потом проверь', answer: tr, greek: ru, sayAfter: w };
+      const caps = Math.random() < 0.4;
+      const shown = caps ? w.normalize('NFD').replace(/\u0301/g, '').normalize('NFC').toUpperCase() : w;
+      return {
+        prompt: `<span class="mid greek">${shown}</span>`,
+        hint: caps ? 'Как на вывеске: заглавными и без ударений' : 'Прочитай вслух, потом проверь',
+        answer: tr, greek: caps ? `${w} — ${ru}` : ru, sayAfter: w,
+      };
     },
-    cheat: () => `<p>ð — как th в англ. <i>this</i>, θ — как th в <i>think</i>. Ударная гласная отмечена знаком ´.</p>`,
+    cheat: () => `<p>ð — как th в англ. <i>this</i>, θ — как th в <i>think</i>. Ударная гласная отмечена знаком ´.</p><p>Заглавными буквами ударение не пишут: ΦΑΡΜΑΚΕΙΟ = φαρμακείο. Ударение приходится угадывать или знать.</p>`,
   },
   {
     id: 'numbers', group: 'Числа', title: 'Числа', sub: 'от нуля до миллиона', kind: 'input', inputmode: 'numeric', placeholder: 'число',
