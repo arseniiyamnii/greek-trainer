@@ -26,7 +26,7 @@ function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true }, load('gt.settings', {}));
+const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true, autoNextDelay: 0 }, load('gt.settings', {}));
 const stats = load('gt.stats', {});
 const modeOpts = load('gt.opts', {});
 
@@ -347,7 +347,7 @@ let autoTimer = null;
 function scheduleAutoNext() {
   clearTimeout(autoTimer);
   const s = session;
-  autoTimer = setTimeout(() => { if (session === s && s.done) nextQuestion(); }, 250);
+  autoTimer = setTimeout(() => { if (session === s && s.done) nextQuestion(); }, settings.autoNextDelay * 1000);
 }
 
 function nextQuestion() {
@@ -477,6 +477,9 @@ function renderSettings() {
       </label>
       <label class="row"><input type="checkbox" id="autoplay" ${settings.autoplay ? 'checked' : ''}> Проигрывать задание сразу</label>
       <label class="row"><input type="checkbox" id="autoNext" ${settings.autoNext ? 'checked' : ''}> Сразу дальше после правильного ответа</label>
+      <label>Задержка перед следующим: <b id="delayV">${settings.autoNextDelay.toFixed(1)} с</b>
+        <input type="range" id="delay" min="0" max="5" step="0.1" value="${settings.autoNextDelay}">
+      </label>
       <button class="wide" id="test">🔊 Проверить голос</button>
       <button class="wide ghost" id="reset">Сбросить статистику</button>
       <p class="hint">Установить как приложение: меню Chrome ⋮ → «Добавить на главный экран». После первой загрузки работает без интернета.</p>
@@ -484,6 +487,7 @@ function renderSettings() {
   $('#voice').onchange = e => { settings.voice = e.target.value; save('gt.settings', settings); };
   $('#rate').oninput = e => { settings.rate = +e.target.value; $('#rateV').textContent = settings.rate.toFixed(2); save('gt.settings', settings); };
   $('#autoplay').onchange = e => { settings.autoplay = e.target.checked; save('gt.settings', settings); };
+  $('#delay').oninput = e => { settings.autoNextDelay = +e.target.value; $('#delayV').textContent = `${settings.autoNextDelay.toFixed(1)} с`; save('gt.settings', settings); };
   $('#autoNext').onchange = e => { settings.autoNext = e.target.checked; save('gt.settings', settings); };
   $('#test').onclick = () => speak('Καλημέρα! Δεκατέσσερα ευρώ και εβδομήντα λεπτά.');
   $('#reset').onclick = () => { if (confirm('Сбросить статистику?')) { for (const k in stats) delete stats[k]; save('gt.stats', stats); } };
