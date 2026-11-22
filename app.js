@@ -14,10 +14,13 @@ const oneCase = L => (Math.random() < 0.5 ? L.up : lower(L));
 const digraphCase = g => {
   const d = pick(g.split(' / '));
   const r = Math.random();
-  if (r < 0.4) return d;
-  if (r < 0.8) return d[0].toUpperCase() + d.slice(1);
+  if (r < 0.6) return d;
+  if (r < 0.85) return d[0].toUpperCase() + d.slice(1);
   return d.toUpperCase();
 };
+const sayAttr = x => `data-say="${esc(JSON.stringify(x))}"`;
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const MONTHS_RU_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
 function load(key, def) {
   try { const v = JSON.parse(localStorage.getItem(key)); return v ?? def; } catch { return def; }
@@ -26,8 +29,9 @@ function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true, autoNextDelay: 0, seqPause: 0.6 }, load('gt.settings', {}));
+const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true, autoNextDelay: 0, seqPause: 0.6, waitSpeech: true }, load('gt.settings', {}));
 const stats = load('gt.stats', {});
+const items = load('gt.items', {});
 const modeOpts = load('gt.opts', {});
 
 let voices = [];
@@ -40,27 +44,50 @@ if ('speechSynthesis' in window) {
 }
 
 let speakToken = 0;
+let finishSpeech = () => {};
+let speechDone = Promise.resolve();
+
 function speakOne(text, mul, onend) {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'el-GR';
   const v = voices.find(v => v.voiceURI === settings.voice) || voices[0];
   if (v) u.voice = v;
   u.rate = Math.max(0.3, settings.rate * mul);
-  if (onend) u.onend = onend;
+  u.onend = onend;
+  u.onerror = onend;
   speechSynthesis.speak(u);
 }
 
+function stopSpeech() {
+  speakToken++;
+  finishSpeech();
+  if (window.speechSynthesis) speechSynthesis.cancel();
+}
+
 function speak(text, mul = 1) {
-  if (!('speechSynthesis' in window) || !text) return;
-  const token = ++speakToken;
-  speechSynthesis.cancel();
+  if (!('speechSynthesis' in window) || !text) return Promise.resolve();
+  stopSpeech();
+  const token = speakToken;
   const parts = Array.isArray(text) ? text : [text];
+  let resolve;
+  speechDone = new Promise(r => { resolve = r; });
+  const watchdog = setTimeout(() => resolve(), 15000);
+  finishSpeech = () => { clearTimeout(watchdog); resolve(); };
+  const end = finishSpeech;
   const step = i => {
-    if (token !== speakToken || i >= parts.length) return;
-    const next = () => setTimeout(() => step(i + 1), settings.seqPause * 1000);
-    speakOne(parts[i], mul, i + 1 < parts.length ? next : null);
+    if (token !== speakToken) return end();
+    if (i >= parts.length) return end();
+    let fired = false;
+    speakOne(parts[i], mul, () => {
+      if (fired) return;
+      fired = true;
+      if (token !== speakToken) return end();
+      if (i + 1 < parts.length) setTimeout(() => step(i + 1), settings.seqPause * 1000);
+      else end();
+    });
   };
   step(0);
+  return speechDone;
 }
 
 function choicesFrom(correct, pool, keyFn, n = 4) {
@@ -74,17 +101,55 @@ function choicesFrom(correct, pool, keyFn, n = 4) {
   return shuffle([correct, ...uniq]);
 }
 
+function parsePrice(s) {
+  let t = s.replace(/[\s€]/g, '');
+  t = t.replace(/[.,](?=\d{3}(\D|$))/g, '');
+  const m = t.match(/^(\d*)(?:[.,](\d{1,2}))?$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  return { e: +(m[1] || 0), c: m[2] ? +(m[2].length === 1 ? m[2] + '0' : m[2]) : 0 };
+}
+
+function parseTime(s) {
+  const t = s.trim();
+  const mm = t.match(/^(\d{1,2})\D+(\d{1,2})$/) || t.match(/^(\d{1,2})(\d{2})$/) || t.match(/^(\d{1,2})$/);
+  if (!mm) return null;
+  return { h: +mm[1], m: mm[2] === undefined ? 0 : +mm[2] };
+}
+
+function parseDate(s) {
+  const mm = s.trim().match(/^(\d{1,2})\D+(\d{1,2})/);
+  return mm ? { d: +mm[1], m: +mm[2] } : null;
+}
+
+const checkPrice = (s, e, c) => { const p = parsePrice(s); return !!p && p.e === e && p.c === c; };
+const checkTime = (s, h, m, twelve) => {
+  const p = parseTime(s);
+  if (!p || p.m !== m) return false;
+  return twelve ? p.h % 12 === h % 12 : p.h === h;
+};
+const checkDate = (s, d, m) => { const p = parseDate(s); return !!p && p.d === d && p.m === m; };
+
+function letterTable() {
+  return `<table class="ref">${LETTERS.map(l => `<tr ${sayAttr(l.name)}><td class="greek lg">${l.up} ${l.lo.replace(' / ', ' ')}</td><td class="greek">${l.name}<br><small>${l.ru}</small></td><td>${l.sound}${l.note ? `<br><small>${l.note}</small>` : ''}</td></tr>`).join('')}</table>`;
+}
+
+function digraphTable() {
+  return `<table class="ref">${DIGRAPHS.map(d => `<tr><td class="greek lg" ${sayAttr(d.syl)}>${d.g}</td><td>${d.sound}${d.note ? `<br><small>${d.note}</small>` : ''}</td><td>${d.words.map(([w, ru]) => `<button class="chip" ${sayAttr([d.syl, w])}><span class="greek">${w}</span><small>${ru}</small></button>`).join('')}</td></tr>`).join('')}</table>`;
+}
+
 const DIR = { key: 'dir', label: 'Режим', values: [['listen', 'Слушать'], ['speak', 'Говорить']] };
 
 const MODES = [
   {
     id: 'letters', group: 'Алфавит', title: 'Буквы', sub: 'буква → звук', kind: 'choice',
+    size: () => LETTERS.length,
     gen() {
       const L = pick(LETTERS);
       const traps = (L.trap || []).filter(() => Math.random() < 0.8);
       const others = choicesFrom(L, LETTERS, x => x.sound).filter(o => o !== L).map(o => o.sound);
       const labels = [L.sound, ...traps, ...others].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
       return {
+        key: L.up,
         prompt: `<span class="big greek">${oneCase(L)}</span>`,
         choices: shuffle(labels).map(l => ({ label: l, ok: l === L.sound })),
         answer: `${L.up} ${L.lo} — ${L.sound}`,
@@ -92,31 +157,35 @@ const MODES = [
         sayAfter: L.name,
       };
     },
-    cheat: () => `<table>${LETTERS.map(l => `<tr><td class="greek">${l.up} ${l.lo}</td><td>${l.ru}</td><td>${l.sound}${l.note ? `<br><small>${l.note}</small>` : ''}</td></tr>`).join('')}</table>
-      <p>Многие буквы похожи на русские и читаются так же (α, κ, μ, ο, π, τ, ς), но есть обманки: Η — и, ν — н, Υ — и, Δ — ð, Β — в, ρ — р, ω — о.</p>
+    ref: () => ({ html: letterTable() }),
+    cheat: () => `<p>Многие буквы похожи на русские и читаются так же (α, κ, μ, ο, π, τ, ς), но есть обманки: Η — и, ν — н, Υ — и, Δ — ð, Β — в, ρ — р, ω — о.</p>
       <p>Звук «и» дают сразу пять написаний: η, ι, υ, ει, οι. Звук «о» — ο и ω. Ударение ставится всегда (знак ´), кроме односложных слов.</p>`,
   },
   {
     id: 'letterNames', group: 'Алфавит', title: 'Названия букв', sub: 'слушай → выбери букву', kind: 'choice', listen: true,
+    size: () => LETTERS.length,
     gen() {
       const L = pick(LETTERS);
       const opts = choicesFrom(L, LETTERS, x => x.up);
       return {
+        key: L.up,
         say: L.name,
         choices: opts.map(o => ({ label: oneCase(o), ok: o === L, greek: true })),
         answer: `${L.up} ${L.lo}`,
         greek: `${L.name} (${L.ru})`,
       };
     },
-    cheat: () => `<table>${LETTERS.map(l => `<tr><td class="greek">${l.up} ${l.lo}</td><td class="greek">${l.name}</td><td>${l.ru}</td></tr>`).join('')}</table>`,
+    ref: () => ({ html: letterTable() }),
   },
   {
     id: 'digraphs', group: 'Алфавит', title: 'Сочетания', sub: 'ου, μπ, ντ, αυ…', kind: 'choice',
+    size: () => DIGRAPHS.length,
     gen() {
       const D = pick(DIGRAPHS);
       const [w, ru] = pick(D.words);
       const opts = choicesFrom(D, DIGRAPHS, x => x.sound);
       return {
+        key: D.g,
         prompt: `<span class="big greek">${digraphCase(D.g)}</span>`,
         choices: opts.map(o => ({ label: o.sound, ok: o === D })),
         answer: `${D.g} — ${D.sound}`,
@@ -124,46 +193,53 @@ const MODES = [
         sayAfter: [D.syl, w],
       };
     },
-    cheat: () => `<table>${DIGRAPHS.map(d => `<tr><td class="greek">${d.g}</td><td>${d.sound}${d.note ? `<br><small>${d.note}</small>` : ''}</td><td class="greek">${d.ex}</td></tr>`).join('')}</table>
-      <p>αυ/ευ читаются «ав/эв» перед гласными и звонкими (αυγό, ευρώ), «аф/эф» — перед глухими (αυτοκίνητο, ευχαριστώ).</p>`,
+    ref: () => ({ html: digraphTable() }),
+    cheat: () => `<p>αυ/ευ читаются «ав/эв» перед гласными и звонкими (αυγό, ευρώ), «аф/эф» — перед глухими (αυτοκίνητο, ευχαριστώ).</p>`,
   },
   {
     id: 'digraphSounds', group: 'Алфавит', title: 'Сочетания на слух', sub: 'слушай слово → выбери', kind: 'choice', listen: true,
+    size: () => DIGRAPHS.length,
     gen() {
       const D = pick(DIGRAPHS);
       const [w, ru] = pick(D.words);
-      const plain = w.normalize('NFD').replace(/\u0301/g, '').normalize('NFC').toLowerCase();
+      const plain = w.normalize('NFD').replace(/́/g, '').normalize('NFC').toLowerCase();
       const inWord = g => g.split(' / ').some(x => plain.includes(x));
       const pool = shuffle(DIGRAPHS.filter(o => o.hear !== D.hear && !inWord(o.g)));
       const others = [];
       for (const o of pool) if (others.length < 3 && !others.some(x => x.hear === o.hear)) others.push(o);
       return {
+        key: D.g,
         say: w,
-        choices: shuffle([D, ...others]).map(o => ({ label: pick(o.g.split(' / ')), ok: o === D, greek: true })),
+        sayAfter: [D.syl, w],
+        choices: shuffle([D, ...others]).map(o => ({ label: digraphCase(o.g), ok: o === D, greek: true })),
         answer: `${D.g} — ${D.sound}`,
         greek: `${w} — ${ru}`,
       };
     },
-    cheat: () => `<table>${DIGRAPHS.map(d => `<tr><td class="greek">${d.g}</td><td>${d.sound}</td><td class="greek">${d.words.map(x => x[0]).join(', ')}</td></tr>`).join('')}</table>
-      <p>ει и οι звучат одинаково («и»), как и γκ с γγ в середине слова («нг») — поэтому вместе в вариантах они не встречаются.</p>`,
+    ref: () => ({ html: digraphTable() }),
+    cheat: () => `<p>ει и οι звучат одинаково («и»), как и γκ с γγ в середине слова («нг») — поэтому вместе в вариантах они не встречаются.</p>`,
   },
   {
     id: 'reading', group: 'Алфавит', title: 'Чтение', sub: 'вывески, меню, города', kind: 'card',
+    size: () => WORDS.length,
     gen() {
       const [w, tr, ru] = pick(WORDS);
       const caps = Math.random() < 0.4;
-      const shown = caps ? w.normalize('NFD').replace(/\u0301/g, '').normalize('NFC').toUpperCase() : w;
+      const shown = caps ? w.normalize('NFD').replace(/́/g, '').normalize('NFC').toUpperCase() : w;
       return {
+        key: w,
         prompt: `<span class="mid greek">${shown}</span>`,
         hint: caps ? 'Как на вывеске: заглавными и без ударений' : 'Прочитай вслух, потом проверь',
         answer: tr, greek: caps ? `${w} — ${ru}` : ru, sayAfter: w,
       };
     },
+    ref: () => ({ html: `<table class="ref">${WORDS.map(([w, tr, ru]) => `<tr ${sayAttr(w)}><td class="greek">${w}</td><td>${tr}</td><td>${ru}</td></tr>`).join('')}</table>` }),
     cheat: () => `<p>ð — как th в англ. <i>this</i>, θ — как th в <i>think</i>. Ударная гласная отмечена знаком ´.</p><p>Заглавными буквами ударение не пишут: ΦΑΡΜΑΚΕΙΟ = φαρμακείο. Ударение приходится угадывать или знать.</p>`,
   },
   {
     id: 'numbers', group: 'Числа', title: 'Числа', sub: 'от нуля до миллиона', kind: 'input', inputmode: 'numeric', placeholder: 'число',
     options: [DIR, { key: 'range', label: 'Диапазон', values: [['9', '0–9'], ['10-20', '10–20'], ['100', '0–100'], ['1000', '100–999'], ['1e4', '1 000–9 999'], ['1e6', 'до 1 млн']] }],
+    size: o => ({ 9: 10, '10-20': 11, 100: 101, 1000: 900, '1e4': 9000 })[o.range] ?? null,
     gen(o) {
       let n;
       if (o.range === '9') n = rnd(0, 9);
@@ -172,13 +248,31 @@ const MODES = [
       else if (o.range === '1000') n = rnd(100, 999);
       else if (o.range === '1e4') n = rnd(1000, 9999);
       else n = Math.random() < 0.5 ? rnd(10, 999) * 1000 : rnd(1000, 999999);
-      return { say: G.num(n), display: fmtInt(n), answer: fmtInt(n), check: s => digits(s) === String(n) && digits(s).length > 0 };
+      return { key: n, say: G.num(n), display: fmtInt(n), answer: fmtInt(n), check: s => digits(s) === String(n) && digits(s).length > 0 };
     },
+    ref: () => ({
+      placeholder: '147', inputmode: 'numeric',
+      convert(s) {
+        const d = digits(s);
+        if (!d) return null;
+        const n = +d;
+        if (n >= 1e9) return { error: 'Максимум 999 999 999' };
+        const nt = G.num(n), ft = G.num(n, 'f'), mt = G.num(n, 'm');
+        const rows = [{ label: `${fmtInt(n)} — средний род (счёт, цены, το)`, text: nt }];
+        if (ft === mt && ft !== nt) rows.push({ label: 'мужской и женский род (ο, η, ώρα, χιλιάδες)', text: ft });
+        else {
+          if (mt !== nt) rows.push({ label: 'мужской род (ο)', text: mt });
+          if (ft !== nt) rows.push({ label: 'женский род (η, ώρα, χιλιάδες)', text: ft });
+        }
+        return { rows };
+      },
+    }),
     cheat: () => numbersCheat(),
   },
   {
     id: 'prices', group: 'Числа', title: 'Цены', sub: 'евро и центы', kind: 'input', inputmode: 'decimal', placeholder: '14,70',
     options: [DIR, { key: 'tier', label: 'Цены', values: [['small', 'мелочь'], ['shop', 'магазин'], ['rent', 'аренда'], ['mix', 'всё']] }],
+    size: o => (o.tier === 'rent' ? 55 : null),
     gen(o) {
       const tier = o.tier === 'mix' ? pick(['small', 'shop', 'rent']) : o.tier;
       let e, c;
@@ -187,8 +281,19 @@ const MODES = [
       else { e = rnd(6, 60) * 50; c = 0; }
       const style = tier !== 'rent' && e && c && Math.random() < 0.4 ? 'short' : 'full';
       const shown = c ? `${fmtInt(e)},${pad2(c)} €` : `${fmtInt(e)} €`;
-      return { say: G.price(e, c, style), display: shown, answer: shown, check: s => checkPrice(s, e, c) };
+      return { key: `${e},${c}`, say: G.price(e, c, style), display: shown, answer: shown, check: s => checkPrice(s, e, c) };
     },
+    ref: () => ({
+      placeholder: '14,70', inputmode: 'decimal',
+      convert(s) {
+        const p = parsePrice(s);
+        if (!p) return s.trim() ? { error: 'Формат: 14,70 или 1200' } : null;
+        if (p.e >= 1e9) return { error: 'Слишком большая сумма' };
+        const rows = [{ label: 'полностью', text: G.price(p.e, p.c) }];
+        if (p.e && p.c) rows.push({ label: 'коротко, как в магазине', text: G.price(p.e, p.c, 'short') });
+        return { rows };
+      },
+    }),
     cheat: () => `<p><b class="greek">δεκατέσσερα ευρώ και εβδομήντα λεπτά</b> — 14,70 €. В магазине часто коротко: <b class="greek">δεκατέσσερα και εβδομήντα</b>.</p>
       <p>ευρώ не склоняется. Цент — <span class="greek">το λεπτό / τα λεπτά</span>. Оба слова среднего рода, поэтому числа в форме среднего рода: <span class="greek">τρία, τέσσερα, διακόσια, χίλια</span>.</p>
       <p><span class="greek">Πόσο κάνει;</span> — сколько стоит? <span class="greek">Πόσο κάνουν;</span> — сколько стоят?</p>`,
@@ -196,27 +301,51 @@ const MODES = [
   {
     id: 'phone', group: 'Числа', title: 'Телефоны', sub: 'парами: 99 12 34 56', kind: 'input', inputmode: 'numeric', placeholder: '99 12 34 56',
     options: [DIR],
+    size: () => null,
     gen() {
       const p = pick(['99', '99', '97', '96', '95', '22', '25', '24', '26']) + Array.from({ length: 6 }, () => rnd(0, 9)).join('');
       const shown = p.match(/\d{2}/g).join(' ');
-      return { say: G.phone(p), display: shown, answer: shown, check: s => digits(s) === p };
+      return { key: p, say: G.phone(p), display: shown, answer: shown, check: s => digits(s) === p };
     },
+    ref: () => ({
+      placeholder: '99 12 34 56', inputmode: 'numeric',
+      convert(s) {
+        const d = digits(s);
+        if (!d) return null;
+        if (d.length % 2) return { error: 'Нужно чётное количество цифр — номер читается парами' };
+        return { rows: [{ label: d.match(/\d{2}/g).join(' '), text: G.phone(d) }] };
+      },
+    }),
     cheat: () => `<p>Номера диктуют парами: 99 05 23 00 → <span class="greek">ενενήντα εννιά, μηδέν πέντε, είκοσι τρία, μηδέν μηδέν</span>.</p>
       <p>Мобильные на Кипре начинаются с 9 (99, 97, 96, 95), городские — с 2 (22 — Никосия, 25 — Лимасол, 24 — Ларнака, 26 — Пафос).</p>`,
   },
   {
     id: 'time', group: 'Время', title: 'Время', sub: 'и τέταρτο, παρά, μισή', kind: 'input', inputmode: 'numeric', placeholder: '3:45',
     options: [DIR, { key: 'style', label: 'Стиль', values: [['spoken', 'разговорное'], ['digital', 'табло 24ч']] }],
+    size: o => (o.style === 'digital' ? 19 * 60 : 144),
     gen(o) {
       if (o.style === 'digital') {
         const h = rnd(5, 23), m = rnd(0, 59);
         const shown = `${h}:${pad2(m)}`;
-        return { say: G.timeDigital(h, m), display: shown, answer: shown, check: s => checkTime(s, h, m, false) };
+        return { key: shown, say: G.timeDigital(h, m), display: shown, answer: shown, check: s => checkTime(s, h, m, false) };
       }
       const h = rnd(1, 12), m = rnd(0, 11) * 5;
       const shown = `${h}:${pad2(m)}`;
-      return { say: G.timeSpoken(h, m), display: shown, answer: shown, check: s => checkTime(s, h, m, true) };
+      return { key: shown, say: G.timeSpoken(h, m), display: shown, answer: shown, check: s => checkTime(s, h, m, true) };
     },
+    ref: () => ({
+      placeholder: '3:45', inputmode: 'numeric',
+      convert(s) {
+        const p = parseTime(s);
+        if (!p) return s.trim() ? { error: 'Формат: 3:45 или 15:45' } : null;
+        if (p.h > 24 || p.m > 59) return { error: 'Часы 0–24, минуты 0–59' };
+        const rows = [];
+        const h12 = p.h % 12 || 12;
+        rows.push({ label: `${h12}:${pad2(p.m)} — разговорное`, text: G.timeSpoken(h12, p.m) });
+        if (p.h > 0 && p.h < 24) rows.push({ label: `${p.h}:${pad2(p.m)} — табло, объявления`, text: G.timeDigital(p.h, p.m) });
+        return { rows };
+      },
+    }),
     cheat: () => `<table>
       <tr><td>3:00</td><td class="greek">τρεις η ώρα</td></tr>
       <tr><td>3:10</td><td class="greek">τρεις και δέκα</td></tr>
@@ -232,34 +361,46 @@ const MODES = [
   {
     id: 'dates', group: 'Время', title: 'Даты', sub: 'πέντε Μαρτίου → 5.3', kind: 'input', inputmode: 'decimal', placeholder: '5.3',
     options: [DIR],
+    size: () => 365,
     gen() {
       const m = rnd(1, 12);
-      const d = rnd(1, [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]);
+      const d = rnd(1, DAYS_IN_MONTH[m - 1]);
       const shown = `${d}.${pad2(m)}`;
-      return {
-        say: G.date(d, m), display: `${d} ${['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'][m - 1]}`,
-        answer: shown, check: s => checkDate(s, d, m),
-      };
+      return { key: shown, say: G.date(d, m), display: `${d} ${MONTHS_RU_GEN[m - 1]}`, answer: shown, check: s => checkDate(s, d, m) };
     },
+    ref: () => ({
+      placeholder: '5.3', inputmode: 'decimal',
+      convert(s) {
+        const p = parseDate(s);
+        if (!p) return s.trim() ? { error: 'Формат: день.месяц, например 5.3' } : null;
+        if (p.m < 1 || p.m > 12 || p.d < 1 || p.d > (p.m === 2 ? 29 : DAYS_IN_MONTH[p.m - 1])) return { error: 'Такой даты нет' };
+        return { rows: [{ label: `${p.d} ${MONTHS_RU_GEN[p.m - 1]}`, text: G.date(p.d, p.m) }] };
+      },
+    }),
     cheat: () => `<p>Число месяца — женский род (η ημέρα), месяц — в родительном падеже: <span class="greek">πέντε Μαρτίου, είκοσι μία Μαΐου</span>. Первое число — порядковое: <span class="greek">πρώτη Ιανουαρίου</span>.</p>
       <table>${G.MONTHS.map((mo, i) => `<tr><td>${G.MONTHS_RU[i]}</td><td class="greek">${mo}</td><td class="greek">${G.MONTHS_GEN[i]}</td></tr>`).join('')}</table>`,
   },
   {
     id: 'calendar', group: 'Время', title: 'Дни и месяцы', sub: 'слушай → выбери', kind: 'choice', listen: true,
     options: [{ key: 'what', label: 'Что', values: [['days', 'дни недели'], ['months', 'месяцы']] }],
+    size: o => (o.what === 'months' ? 12 : 7),
     gen(o) {
       const isDays = o.what !== 'months';
       const gr = isDays ? G.DAYS : G.MONTHS, ru = isDays ? G.DAYS_RU : G.MONTHS_RU;
       const i = rnd(0, gr.length - 1);
       return {
+        key: i,
         say: gr[i],
         choices: ru.map((r, j) => ({ label: r, ok: j === i })),
         grid: isDays ? 'g7' : 'g12',
         answer: ru[i], greek: gr[i],
       };
     },
-    cheat: () => `<table>${G.DAYS.map((d, i) => `<tr><td>${G.DAYS_RU[i]}</td><td class="greek">${d}</td></tr>`).join('')}</table>
-      <p>Δευτέρα — «второй», Τρίτη — «третий», Τετάρτη — «четвёртый», Πέμπτη — «пятый» день от воскресенья. <span class="greek">σήμερα</span> — сегодня, <span class="greek">αύριο</span> — завтра, <span class="greek">χθες</span> — вчера.</p>`,
+    ref: () => ({
+      html: `<h3>Дни недели</h3><table class="ref">${G.DAYS.map((d, i) => `<tr ${sayAttr(d)}><td class="greek">${d}</td><td>${G.DAYS_RU[i]}</td></tr>`).join('')}</table>
+        <h3>Месяцы</h3><table class="ref">${G.MONTHS.map((m, i) => `<tr ${sayAttr(m)}><td class="greek">${m}<br><small>${G.MONTHS_GEN[i]}</small></td><td>${G.MONTHS_RU[i]}</td></tr>`).join('')}</table>`,
+    }),
+    cheat: () => `<p>Δευτέρα — «второй», Τρίτη — «третий», Τετάρτη — «четвёртый», Πέμπτη — «пятый» день от воскресенья. <span class="greek">σήμερα</span> — сегодня, <span class="greek">αύριο</span> — завтра, <span class="greek">χθες</span> — вчера.</p>`,
   },
 ];
 
@@ -270,39 +411,34 @@ function numbersCheat() {
     <p>7, 8, 9 имеют книжные варианты: <span class="greek">επτά, οκτώ, εννέα</span>. Разговорные (<span class="greek">εφτά, οχτώ, εννιά</span>) услышишь чаще.</p>`;
 }
 
-function checkPrice(s, e, c) {
-  let t = s.replace(/[\s€]/g, '');
-  t = t.replace(/[.,](?=\d{3}(\D|$))/g, '');
-  const m = t.match(/^(\d*)(?:[.,](\d{1,2}))?$/);
-  if (!m || (!m[1] && !m[2])) return false;
-  const ee = +(m[1] || 0);
-  const cc = m[2] ? +(m[2].length === 1 ? m[2] + '0' : m[2]) : 0;
-  return ee === e && cc === c;
-}
-
-function checkTime(s, h, m, twelve) {
-  const t = s.trim();
-  let mm = t.match(/^(\d{1,2})\D+(\d{1,2})$/) || t.match(/^(\d{1,2})(\d{2})$/);
-  if (!mm) return false;
-  const hh = +mm[1], mi = +mm[2];
-  if (mi !== m) return false;
-  return twelve ? hh % 12 === h % 12 : hh === h;
-}
-
-function checkDate(s, d, m) {
-  const mm = s.trim().match(/^(\d{1,2})\D+(\d{1,2})/);
-  return !!mm && +mm[1] === d && +mm[2] === m;
-}
-
 function optsFor(mode) {
   const o = { ...(modeOpts[mode.id] || {}) };
   for (const op of mode.options || []) if (!op.values.some(v => v[0] === o[op.key])) o[op.key] = op.values[0][0];
   return o;
 }
 
+const scopeId = (mode, o) => [mode.id, ...(mode.options || []).map(op => o[op.key])].join('|');
+
+function learnedCount(mode, o) {
+  return Object.values(items[scopeId(mode, o)] || {}).filter(v => v >= 2).length;
+}
+
+function progressText(mode, o) {
+  const n = learnedCount(mode, o);
+  const total = mode.size ? mode.size(o) : null;
+  return total ? `выучено ${n} из ${total}` : `выучено ${n}`;
+}
+
+function recordItem(mode, o, key, ok) {
+  if (key === undefined) return;
+  const sc = (items[scopeId(mode, o)] ||= {});
+  sc[key] = ok ? (sc[key] || 0) + 1 : 0;
+  save('gt.items', items);
+}
+
 function route() {
   const h = location.hash.replace(/^#\/?/, '').split('/');
-  if (h[0] === 'mode' && MODES.some(m => m.id === h[1])) return { name: 'mode', id: h[1] };
+  if ((h[0] === 'mode' || h[0] === 'ref') && MODES.some(m => m.id === h[1])) return { name: h[0], id: h[1] };
   if (h[0] === 'settings') return { name: 'settings' };
   return { name: 'home' };
 }
@@ -313,10 +449,10 @@ const backBtn = $('#back');
 
 function render() {
   const r = route();
-  speakToken++;
-  if (window.speechSynthesis) speechSynthesis.cancel();
+  stopSpeech();
   backBtn.hidden = r.name === 'home';
   if (r.name === 'mode') renderMode(MODES.find(m => m.id === r.id));
+  else if (r.name === 'ref') renderRef(MODES.find(m => m.id === r.id));
   else if (r.name === 'settings') renderSettings();
   else renderHome();
   window.scrollTo(0, 0);
@@ -325,7 +461,7 @@ function render() {
 function pct(id) {
   const s = stats[id];
   if (!s || !s.total) return '';
-  return `${Math.round((100 * s.ok) / s.total)}% · ${s.total}`;
+  return ` · ${Math.round((100 * s.ok) / s.total)}%`;
 }
 
 function renderHome() {
@@ -335,24 +471,24 @@ function renderHome() {
   view.innerHTML = warn + groups.map(g => `
     <section><h2>${g}</h2><div class="tiles">
       ${MODES.filter(m => m.group === g).map(m => `
-        <a class="tile" href="#/mode/${m.id}"><b>${m.title}</b><span>${m.sub}</span><i>${pct(m.id)}</i></a>`).join('')}
-    </div></section>`).join('');
+        <a class="tile" href="#/mode/${m.id}"><b>${m.title}</b><span>${m.sub}</span><i>${progressText(m, optsFor(m))}${pct(m.id)}</i></a>`).join('')}
+    </div></section>`).join('') + `<p class="hint center">«Выучено» — ответил правильно два раза подряд.</p>`;
 }
 
 let session = null;
 
 function renderMode(mode) {
   title.textContent = mode.title;
-  session = { mode, opts: optsFor(mode), ok: 0, total: 0, count: 0, retry: [], q: null, done: false };
+  session = { mode, opts: optsFor(mode), ok: 0, total: 0, count: 0, retry: [], q: null, done: false, answered: false };
   view.innerHTML = `
     <div class="opts">${(mode.options || []).map(op => `
       <div class="seg" data-key="${op.key}">${op.values.map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}</div>`).join('')}
     </div>
-    <div class="score" id="score"></div>
+    <div class="score"><span id="rep"></span><span id="progress"></span><a class="reflink" href="#/ref/${mode.id}">📖 Словарь</a></div>
     <div class="card" id="card"></div>
     <div id="answer"></div>
     <div id="feedback"></div>
-    <details class="cheat"><summary>Шпаргалка</summary><div>${mode.cheat ? mode.cheat() : ''}</div></details>`;
+    ${mode.cheat ? `<details class="cheat"><summary>Шпаргалка</summary><div>${mode.cheat()}</div></details>` : ''}`;
   view.querySelectorAll('.seg').forEach(seg => {
     seg.addEventListener('click', e => {
       const b = e.target.closest('button');
@@ -375,24 +511,44 @@ function syncSegs() {
   });
 }
 
-function isListen(q) {
+function updateScore() {
+  const s = session;
+  $('#rep').innerHTML = s.q?.repeat ? '↻ повтор' : '';
+  $('#progress').textContent = `${progressText(s.mode, s.opts)}${s.total ? ` · ✓ ${s.ok}/${s.total}` : ''}`;
+}
+
+function isListen() {
   const { mode, opts } = session;
   if (mode.kind === 'input') return opts.dir !== 'speak';
   return !!mode.listen;
 }
 
 let autoTimer = null;
+let autoToken = 0;
 function scheduleAutoNext() {
   clearTimeout(autoTimer);
   const s = session;
-  autoTimer = setTimeout(() => { if (session === s && s.done) nextQuestion(); }, settings.autoNextDelay * 1000);
+  const token = ++autoToken;
+  const started = Date.now();
+  const minMs = settings.autoNextDelay * 1000;
+  const go = () => { if (token === autoToken && session === s && s.done) nextQuestion(); };
+  if (settings.waitSpeech) {
+    speechDone.then(() => {
+      if (token !== autoToken) return;
+      autoTimer = setTimeout(go, Math.max(0, minMs - (Date.now() - started)));
+    });
+  } else {
+    autoTimer = setTimeout(go, minMs);
+  }
 }
 
 function nextQuestion() {
   clearTimeout(autoTimer);
+  autoToken++;
   const s = session;
   s.count++;
   s.done = false;
+  s.answered = false;
   const due = s.retry.findIndex(r => r.due <= s.count && r.q !== s.q);
   if (due >= 0) {
     s.q = s.retry.splice(due, 1)[0].q;
@@ -410,10 +566,10 @@ function playButtons() {
 
 function renderQuestion() {
   const { mode, q } = session;
-  const listen = isListen(q);
+  const listen = isListen();
   const card = $('#card'), ans = $('#answer');
   $('#feedback').innerHTML = '';
-  $('#score').innerHTML = `${q.repeat ? '<span class="rep">↻ повтор</span>' : ''}${session.total ? `✓ ${session.ok} из ${session.total}` : ''}`;
+  updateScore();
 
   if (mode.kind === 'input' && listen) {
     card.innerHTML = `<div class="listen">🎧</div><p class="hint">Послушай и запиши цифрами</p>${playButtons()}`;
@@ -429,7 +585,7 @@ function renderQuestion() {
     card.innerHTML = listen ? `<div class="listen">🎧</div>${playButtons()}` : q.prompt;
     ans.innerHTML = `<div class="choices ${q.grid || ''}">${q.choices.map((c, i) => `<button data-choice="${i}" class="${c.greek ? 'greek' : ''}">${esc(c.label)}</button>`).join('')}</div>`;
   }
-  if (listen && settings.autoplay) setTimeout(() => speak(q.say), 250);
+  if (listen && settings.autoplay) setTimeout(() => { if (session?.q === q && !session.answered) speak(q.say); }, 250);
 }
 
 function grade(ok, given, feedback = true) {
@@ -449,11 +605,14 @@ function grade(ok, given, feedback = true) {
   st.total++;
   if (ok) st.ok++;
   save('gt.stats', stats);
+  recordItem(s.mode, s.opts, q.key, ok);
+  updateScore();
   if (feedback) showFeedback(ok, given);
 }
 
 function showFeedback(ok, given) {
   const { mode, q } = session;
+  session.answered = true;
   const greekText = q.say && mode.kind === 'input' ? q.say : q.greek;
   const head = ok === null ? '' : ok ? `<div class="res ok">Верно</div>` : `<div class="res bad">Неверно${given ? `: <s>${esc(given)}</s>` : ''}</div>`;
   $('#feedback').innerHTML = `
@@ -481,17 +640,54 @@ function showFeedback(ok, given) {
   }
   $('#nextBtn')?.focus({ preventScroll: true });
   $('#feedback').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  if (q.sayAfter || mode.kind === 'card' || (mode.kind === 'input' && !isListen(q))) speak(q.sayAfter || q.say);
+  if (q.sayAfter || mode.kind === 'card' || (mode.kind === 'input' && !isListen())) speak(q.sayAfter || q.say);
   if (ok === true && settings.autoNext) scheduleAutoNext();
 }
 
+function renderRef(mode) {
+  title.textContent = `Словарь: ${mode.title}`;
+  const ref = mode.ref();
+  if (ref.html) {
+    view.innerHTML = `<p class="hint">Нажми на строку или слово, чтобы послушать.</p>${ref.html}
+      <a class="wide btnlink" href="#/mode/${mode.id}">К упражнению</a>`;
+    return;
+  }
+  view.innerHTML = `
+    <p class="hint">Введи значение — покажу, как это пишется и звучит.</p>
+    <form class="inp" id="convForm"><input id="convIn" inputmode="${ref.inputmode}" autocomplete="off" placeholder="${ref.placeholder}"><button>🔊</button></form>
+    <div id="convOut"></div>
+    <a class="wide btnlink" href="#/mode/${mode.id}">К упражнению</a>`;
+  const inp = $('#convIn'), out = $('#convOut');
+  let last = null;
+  const update = () => {
+    const r = ref.convert(inp.value);
+    last = r;
+    if (!r) { out.innerHTML = ''; return; }
+    if (r.error) { out.innerHTML = `<p class="err">${esc(r.error)}</p>`; return; }
+    out.innerHTML = r.rows.map(row => `
+      <div class="conv" ${sayAttr(row.text)}>
+        <small>${esc(row.label)}</small>
+        <div class="greek">${esc(row.text)}</div>
+      </div>`).join('');
+  };
+  inp.addEventListener('input', update);
+  $('#convForm').addEventListener('submit', e => { e.preventDefault(); update(); if (last?.rows) speak(last.rows[0].text); });
+  inp.focus();
+}
+
 view.addEventListener('click', e => {
+  const sayEl = e.target.closest('[data-say]');
+  if (sayEl) {
+    try { speak(JSON.parse(sayEl.dataset.say)); } catch {}
+    return;
+  }
   const b = e.target.closest('button');
   if (!b || !session) return;
   const q = session.q;
   const act = b.dataset.act;
-  if (act === 'play') speak(q.say || q.sayAfter);
-  else if (act === 'slow') speak(q.say || q.sayAfter, 0.6);
+  const what = session.answered ? q.sayAfter || q.say : q.say || q.sayAfter;
+  if (act === 'play') speak(what);
+  else if (act === 'slow') speak(what, 0.6);
   else if (act === 'next') nextQuestion();
   else if (act === 'reveal') { session.done = false; showFeedback(null); }
   else if (act === 'know' || act === 'dontknow') {
@@ -530,7 +726,8 @@ function renderSettings() {
         <input type="range" id="seq" min="0" max="3" step="0.1" value="${settings.seqPause}">
       </label>
       <label class="row"><input type="checkbox" id="autoNext" ${settings.autoNext ? 'checked' : ''}> Сразу дальше после правильного ответа</label>
-      <label>Задержка перед следующим: <b id="delayV">${settings.autoNextDelay.toFixed(1)} с</b>
+      <label class="row"><input type="checkbox" id="waitSpeech" ${settings.waitSpeech ? 'checked' : ''}> Не переключать, пока идёт озвучка</label>
+      <label>Задержка перед следующим (считается от ответа): <b id="delayV">${settings.autoNextDelay.toFixed(1)} с</b>
         <input type="range" id="delay" min="0" max="5" step="0.1" value="${settings.autoNextDelay}">
       </label>
       <button class="wide" id="test">🔊 Проверить голос</button>
@@ -543,12 +740,19 @@ function renderSettings() {
   $('#seq').oninput = e => { settings.seqPause = +e.target.value; $('#seqV').textContent = `${settings.seqPause.toFixed(1)} с`; save('gt.settings', settings); };
   $('#delay').oninput = e => { settings.autoNextDelay = +e.target.value; $('#delayV').textContent = `${settings.autoNextDelay.toFixed(1)} с`; save('gt.settings', settings); };
   $('#autoNext').onchange = e => { settings.autoNext = e.target.checked; save('gt.settings', settings); };
+  $('#waitSpeech').onchange = e => { settings.waitSpeech = e.target.checked; save('gt.settings', settings); };
   $('#test').onclick = () => speak('Καλημέρα! Δεκατέσσερα ευρώ και εβδομήντα λεπτά.');
-  $('#reset').onclick = () => { if (confirm('Сбросить статистику?')) { for (const k in stats) delete stats[k]; save('gt.stats', stats); } };
+  $('#reset').onclick = () => {
+    if (!confirm('Сбросить статистику и прогресс?')) return;
+    for (const k in stats) delete stats[k];
+    for (const k in items) delete items[k];
+    save('gt.stats', stats);
+    save('gt.items', items);
+  };
 }
 
 backBtn.addEventListener('click', () => { if (history.length > 1) history.back(); else location.hash = ''; });
-window.addEventListener('hashchange', () => { clearTimeout(autoTimer); session = null; render(); });
+window.addEventListener('hashchange', () => { clearTimeout(autoTimer); autoToken++; session = null; render(); });
 render();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {

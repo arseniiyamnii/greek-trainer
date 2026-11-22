@@ -85,8 +85,10 @@ section:first-child h2 { margin-top: 4px; }
 }
 .seg button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
-.score { min-height: 22px; font-size: 14px; color: var(--muted); display: flex; justify-content: flex-end; gap: 10px; }
-.score .rep { margin-right: auto; color: var(--accent); font-weight: 600; }
+.score { display: flex; align-items: center; gap: 10px; min-height: 30px; margin-bottom: 6px; font-size: 14px; color: var(--muted); }
+#rep { color: var(--accent); font-weight: 600; }
+#progress { margin-left: auto; text-align: right; }
+.reflink { padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--text); text-decoration: none; white-space: nowrap; }
 
 .card {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
@@ -154,3 +156,22 @@ section:first-child h2 { margin-top: 4px; }
 .settings select { padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
 .settings label.row { display: flex; align-items: center; gap: 10px; }
 .settings label.row input { width: 22px; height: 22px; }
+
+.center { text-align: center; }
+h3 { font-size: 15px; margin: 18px 0 6px; color: var(--muted); }
+table.ref { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+table.ref td { padding: 9px 10px; border-top: 1px solid var(--line); vertical-align: top; font-size: 15px; }
+table.ref tr:first-child td { border-top: 0; }
+table.ref [data-say] { cursor: pointer; }
+table.ref tr[data-say]:active, table.ref td[data-say]:active { background: var(--accent-soft); }
+table.ref small { color: var(--muted); }
+table.ref td.lg { font-size: 24px; white-space: nowrap; }
+.chip { display: inline-flex; flex-direction: column; align-items: flex-start; margin: 0 6px 6px 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--accent-soft); font-size: 15px; text-align: left; }
+.chip small { font-size: 12px; }
+.conv { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; }
+.conv:active { background: var(--accent-soft); }
+.conv small { color: var(--muted); }
+.conv .greek { font-size: 20px; margin-top: 2px; }
+.conv .greek::after { content: "  🔊"; font-size: 15px; }
+.err { color: var(--bad); }
+.btnlink { display: block; text-align: center; text-decoration: none; margin-top: 18px; }
