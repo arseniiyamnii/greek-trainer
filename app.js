@@ -68,16 +68,19 @@ const MODES = [
     id: 'letters', group: 'Алфавит', title: 'Буквы', sub: 'буква → звук', kind: 'choice',
     gen() {
       const L = pick(LETTERS);
-      const opts = choicesFrom(L, LETTERS, x => x.sound);
+      const traps = (L.trap || []).filter(() => Math.random() < 0.8);
+      const others = choicesFrom(L, LETTERS, x => x.sound).filter(o => o !== L).map(o => o.sound);
+      const labels = [L.sound, ...traps, ...others].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
       return {
         prompt: `<span class="big greek">${oneCase(L)}</span>`,
-        choices: opts.map(o => ({ label: o.sound, ok: o === L })),
+        choices: shuffle(labels).map(l => ({ label: l, ok: l === L.sound })),
         answer: `${L.up} ${L.lo} — ${L.sound}`,
         greek: `${L.name} (${L.ru})${L.note ? ` · ${L.note}` : ''}`,
         sayAfter: L.name,
       };
     },
     cheat: () => `<table>${LETTERS.map(l => `<tr><td class="greek">${l.up} ${l.lo}</td><td>${l.ru}</td><td>${l.sound}${l.note ? `<br><small>${l.note}</small>` : ''}</td></tr>`).join('')}</table>
+      <p>Многие буквы похожи на русские и читаются так же (α, κ, μ, ο, π, τ, ς), но есть обманки: Η — и, ν — н, Υ — и, Δ — ð, Β — в, ρ — р, ω — о.</p>
       <p>Звук «и» дают сразу пять написаний: η, ι, υ, ει, οι. Звук «о» — ο и ω. Ударение ставится всегда (знак ´), кроме односложных слов.</p>`,
   },
   {
