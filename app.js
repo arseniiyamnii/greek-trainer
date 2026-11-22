@@ -57,8 +57,10 @@ function speakOne(text, mul, onend) {
   const v = voices.find(v => v.voiceURI === settings.voice) || voices[0];
   if (v) u.voice = v;
   u.rate = Math.max(0.3, cfg().rate * mul);
-  u.onend = onend;
-  u.onerror = onend;
+  let started = false;
+  u.onstart = () => { started = true; };
+  u.onend = e => onend(started, e);
+  u.onerror = e => onend(started, e);
   speechSynthesis.speak(u);
 }
 
@@ -70,6 +72,7 @@ function stopSpeech() {
 
 function speak(text, mul = 1) {
   if (!('speechSynthesis' in window) || !text) return Promise.resolve();
+  const busy = speechSynthesis.speaking || speechSynthesis.pending;
   stopSpeech();
   const token = speakToken;
   const parts = Array.isArray(text) ? text : [text];
@@ -78,19 +81,21 @@ function speak(text, mul = 1) {
   const watchdog = setTimeout(() => resolve(), 15000);
   finishSpeech = () => { clearTimeout(watchdog); resolve(); };
   const end = finishSpeech;
-  const step = i => {
+  const step = (i, retry = 0) => {
     if (token !== speakToken) return end();
     if (i >= parts.length) return end();
     let fired = false;
-    speakOne(parts[i], mul, () => {
+    speakOne(parts[i], mul, started => {
       if (fired) return;
       fired = true;
       if (token !== speakToken) return end();
+      if (!started && retry < 2) return setTimeout(() => step(i, retry + 1), 150);
       if (i + 1 < parts.length) setTimeout(() => step(i + 1), cfg().seqPause * 1000);
       else end();
     });
   };
-  step(0);
+  if (busy) setTimeout(() => step(0), 150);
+  else step(0);
   return speechDone;
 }
 
