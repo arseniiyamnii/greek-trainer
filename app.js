@@ -347,14 +347,7 @@ let autoTimer = null;
 function scheduleAutoNext() {
   clearTimeout(autoTimer);
   const s = session;
-  const started = Date.now();
-  const tick = () => {
-    if (session !== s || !s.done) return;
-    const speaking = window.speechSynthesis?.speaking && Date.now() - started < 6000;
-    if (speaking || Date.now() - started < 900) autoTimer = setTimeout(tick, 150);
-    else autoTimer = setTimeout(() => { if (session === s && s.done) nextQuestion(); }, 350);
-  };
-  autoTimer = setTimeout(tick, 150);
+  autoTimer = setTimeout(() => { if (session === s && s.done) nextQuestion(); }, 250);
 }
 
 function nextQuestion() {
