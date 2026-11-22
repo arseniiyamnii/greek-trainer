@@ -358,8 +358,14 @@ function nextQuestion() {
   const s = session;
   s.count++;
   s.done = false;
-  const due = s.retry.findIndex(r => r.due <= s.count);
-  s.q = due >= 0 ? s.retry.splice(due, 1)[0].q : s.mode.gen(s.opts);
+  const due = s.retry.findIndex(r => r.due <= s.count && r.q !== s.q);
+  if (due >= 0) {
+    s.q = s.retry.splice(due, 1)[0].q;
+    s.q.repeat = true;
+    if (s.q.choices) s.q.choices = shuffle(s.q.choices);
+  } else {
+    s.q = s.mode.gen(s.opts);
+  }
   renderQuestion();
 }
 
@@ -372,7 +378,7 @@ function renderQuestion() {
   const listen = isListen(q);
   const card = $('#card'), ans = $('#answer');
   $('#feedback').innerHTML = '';
-  $('#score').textContent = session.total ? `✓ ${session.ok} из ${session.total}` : '';
+  $('#score').innerHTML = `${q.repeat ? '<span class="rep">↻ повтор</span>' : ''}${session.total ? `✓ ${session.ok} из ${session.total}` : ''}`;
 
   if (mode.kind === 'input' && listen) {
     card.innerHTML = `<div class="listen">🎧</div><p class="hint">Послушай и запиши цифрами</p>${playButtons()}`;
@@ -397,7 +403,13 @@ function grade(ok, given, feedback = true) {
   s.done = true;
   s.total++;
   if (ok) s.ok++;
-  else s.retry.push({ q: s.q, due: s.count + 3 });
+  const q = s.q;
+  if (!ok) {
+    q.need = 2;
+    s.retry.push({ q, due: s.count + rnd(2, 5) });
+  } else if (q.need > 0 && --q.need > 0) {
+    s.retry.push({ q, due: s.count + rnd(5, 9) });
+  }
   const st = (stats[s.mode.id] ||= { ok: 0, total: 0 });
   st.total++;
   if (ok) st.ok++;
