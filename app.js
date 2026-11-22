@@ -495,7 +495,7 @@ function renderMode(mode) {
   title.textContent = mode.title;
   const restored = parked && parked.mode === mode && parked.q && !parked.done ? parked : null;
   parked = null;
-  session = restored || { mode, opts: optsFor(mode), ok: 0, total: 0, count: 0, retry: [], q: null, done: false, answered: false };
+  session = restored || { mode, opts: optsFor(mode), ok: 0, total: 0, count: 0, retry: [], seen: {}, q: null, done: false, answered: false };
   view.innerHTML = `
     <div class="opts">${(mode.options || []).map(op => `
       <div class="seg" data-key="${op.key}">${op.values.map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}</div>`).join('')}
@@ -513,6 +513,7 @@ function renderMode(mode) {
       modeOpts[mode.id] = session.opts;
       save('gt.opts', modeOpts);
       session.retry = [];
+      session.seen = {};
       syncSegs();
       nextQuestion();
     });
@@ -560,6 +561,18 @@ function scheduleAutoNext() {
   }
 }
 
+function pickFresh(s) {
+  const streaks = items[scopeId(s.mode, s.opts)] || {};
+  const prev = s.q?.key;
+  let best = null, bestScore = Infinity;
+  for (let i = 0; i < 40; i++) {
+    const q = s.mode.gen(s.opts);
+    const score = (q.key === prev ? 1000 : 0) + (s.seen[q.key] || 0) * 10 + Math.min(streaks[q.key] || 0, 5) + Math.random();
+    if (score < bestScore) { best = q; bestScore = score; }
+  }
+  return best;
+}
+
 function nextQuestion() {
   clearTimeout(autoTimer);
   autoToken++;
@@ -576,8 +589,9 @@ function nextQuestion() {
     s.q.repeat = true;
     if (s.q.choices) s.q.choices = shuffle(s.q.choices);
   } else {
-    s.q = s.mode.gen(s.opts);
+    s.q = pickFresh(s);
   }
+  s.seen[s.q.key] = (s.seen[s.q.key] || 0) + 1;
   renderQuestion();
 }
 
