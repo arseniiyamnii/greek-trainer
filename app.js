@@ -456,6 +456,7 @@ function render() {
   stopSpeech();
   backBtn.hidden = r.name === 'home';
   activeMode = r.id || null;
+  $('#ver').textContent = r.name === 'home' ? `v${VERSION.n} · ${VERSION.date}` : `v${VERSION.n}`;
   $('#settingsBtn').href = r.id ? `#/settings/${r.id}` : '#/settings';
   $('#settingsBtn').hidden = r.name === 'settings';
   if (r.name === 'mode') renderMode(MODES.find(m => m.id === r.id));
@@ -472,7 +473,7 @@ function pct(id) {
 }
 
 function renderHome() {
-  title.innerHTML = `Ελληνικά <small class="ver">v${VERSION.n} · ${esc(VERSION.date)}</small>`;
+  title.textContent = 'Ελληνικά';
   const groups = [...new Set(MODES.map(m => m.group))];
   const warn = voices.length || !('speechSynthesis' in window) ? '' : `<a class="warn" href="#/settings">Греческий голос пока не найден — открой настройки</a>`;
   view.innerHTML = warn + groups.map(g => `
@@ -580,9 +581,9 @@ function renderQuestion() {
 
   if (mode.kind === 'input' && listen) {
     card.innerHTML = `<div class="listen">🎧</div><p class="hint">Послушай и запиши цифрами</p>${playButtons()}`;
-    ans.innerHTML = `<form class="inp"><input id="inp" inputmode="${mode.inputmode}" autocomplete="off" placeholder="${mode.placeholder}"><button>Проверить</button></form>`;
+    ans.innerHTML = `<form class="inp"><input id="inp" inputmode="${mode.inputmode}" autocomplete="off" placeholder="${mode.placeholder} · пусто = не знаю"><button>Проверить</button></form>`;
     const f = $('form', ans), inp = $('#inp');
-    f.addEventListener('submit', e => { e.preventDefault(); if (inp.value.trim()) grade(q.check(inp.value), inp.value); });
+    f.addEventListener('submit', e => { e.preventDefault(); const v = inp.value.trim(); grade(!!v && q.check(v), v || null); });
     inp.focus();
   } else if (mode.kind === 'input' || mode.kind === 'card') {
     const shown = mode.kind === 'input' ? `<span class="mid">${esc(q.display)}</span>` : q.prompt;
@@ -621,7 +622,7 @@ function showFeedback(ok, given) {
   const { mode, q } = session;
   session.answered = true;
   const greekText = q.say && mode.kind === 'input' ? q.say : q.greek;
-  const head = ok === null ? '' : ok ? `<div class="res ok">Верно</div>` : `<div class="res bad">Неверно${given ? `: <s>${esc(given)}</s>` : ''}</div>`;
+  const head = ok === null ? '' : ok ? `<div class="res ok">Верно</div>` : given === null ? `<div class="res bad">Не знаю</div>` : `<div class="res bad">Неверно${given ? `: <s>${esc(given)}</s>` : ''}</div>`;
   $('#feedback').innerHTML = `
     <div class="fb ${ok === false ? 'bad' : ok ? 'ok' : ''}">
       ${head}
