@@ -26,7 +26,7 @@ function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true, autoNextDelay: 0 }, load('gt.settings', {}));
+const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true, autoNextDelay: 0, seqPause: 0.6 }, load('gt.settings', {}));
 const stats = load('gt.stats', {});
 const modeOpts = load('gt.opts', {});
 
@@ -39,15 +39,28 @@ if ('speechSynthesis' in window) {
   speechSynthesis.onvoiceschanged = () => { refreshVoices(); if (route().name === 'settings') renderSettings(); };
 }
 
-function speak(text, mul = 1) {
-  if (!('speechSynthesis' in window) || !text) return;
-  speechSynthesis.cancel();
+let speakToken = 0;
+function speakOne(text, mul, onend) {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'el-GR';
   const v = voices.find(v => v.voiceURI === settings.voice) || voices[0];
   if (v) u.voice = v;
   u.rate = Math.max(0.3, settings.rate * mul);
+  if (onend) u.onend = onend;
   speechSynthesis.speak(u);
+}
+
+function speak(text, mul = 1) {
+  if (!('speechSynthesis' in window) || !text) return;
+  const token = ++speakToken;
+  speechSynthesis.cancel();
+  const parts = Array.isArray(text) ? text : [text];
+  const step = i => {
+    if (token !== speakToken || i >= parts.length) return;
+    const next = () => setTimeout(() => step(i + 1), settings.seqPause * 1000);
+    speakOne(parts[i], mul, i + 1 < parts.length ? next : null);
+  };
+  step(0);
 }
 
 function choicesFrom(correct, pool, keyFn, n = 4) {
@@ -101,13 +114,14 @@ const MODES = [
     id: 'digraphs', group: 'Алфавит', title: 'Сочетания', sub: 'ου, μπ, ντ, αυ…', kind: 'choice',
     gen() {
       const D = pick(DIGRAPHS);
+      const [w, ru] = pick(D.words);
       const opts = choicesFrom(D, DIGRAPHS, x => x.sound);
       return {
         prompt: `<span class="big greek">${digraphCase(D.g)}</span>`,
         choices: opts.map(o => ({ label: o.sound, ok: o === D })),
         answer: `${D.g} — ${D.sound}`,
-        greek: `${D.note ? `${D.note} · ` : ''}пример: ${D.ex}`,
-        sayAfter: D.ex.split(',')[0],
+        greek: `${D.note ? `${D.note} · ` : ''}пример: ${w} — ${ru}`,
+        sayAfter: [D.syl, w],
       };
     },
     cheat: () => `<table>${DIGRAPHS.map(d => `<tr><td class="greek">${d.g}</td><td>${d.sound}${d.note ? `<br><small>${d.note}</small>` : ''}</td><td class="greek">${d.ex}</td></tr>`).join('')}</table>
@@ -299,6 +313,7 @@ const backBtn = $('#back');
 
 function render() {
   const r = route();
+  speakToken++;
   if (window.speechSynthesis) speechSynthesis.cancel();
   backBtn.hidden = r.name === 'home';
   if (r.name === 'mode') renderMode(MODES.find(m => m.id === r.id));
@@ -511,6 +526,9 @@ function renderSettings() {
         <input type="range" id="rate" min="0.5" max="1.3" step="0.05" value="${settings.rate}">
       </label>
       <label class="row"><input type="checkbox" id="autoplay" ${settings.autoplay ? 'checked' : ''}> Проигрывать задание сразу</label>
+      <label>Пауза между сочетанием и словом: <b id="seqV">${settings.seqPause.toFixed(1)} с</b>
+        <input type="range" id="seq" min="0" max="3" step="0.1" value="${settings.seqPause}">
+      </label>
       <label class="row"><input type="checkbox" id="autoNext" ${settings.autoNext ? 'checked' : ''}> Сразу дальше после правильного ответа</label>
       <label>Задержка перед следующим: <b id="delayV">${settings.autoNextDelay.toFixed(1)} с</b>
         <input type="range" id="delay" min="0" max="5" step="0.1" value="${settings.autoNextDelay}">
@@ -522,6 +540,7 @@ function renderSettings() {
   $('#voice').onchange = e => { settings.voice = e.target.value; save('gt.settings', settings); };
   $('#rate').oninput = e => { settings.rate = +e.target.value; $('#rateV').textContent = settings.rate.toFixed(2); save('gt.settings', settings); };
   $('#autoplay').onchange = e => { settings.autoplay = e.target.checked; save('gt.settings', settings); };
+  $('#seq').oninput = e => { settings.seqPause = +e.target.value; $('#seqV').textContent = `${settings.seqPause.toFixed(1)} с`; save('gt.settings', settings); };
   $('#delay').oninput = e => { settings.autoNextDelay = +e.target.value; $('#delayV').textContent = `${settings.autoNextDelay.toFixed(1)} с`; save('gt.settings', settings); };
   $('#autoNext').onchange = e => { settings.autoNext = e.target.checked; save('gt.settings', settings); };
   $('#test').onclick = () => speak('Καλημέρα! Δεκατέσσερα ευρώ και εβδομήντα λεπτά.');
