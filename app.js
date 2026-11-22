@@ -1,5 +1,6 @@
 import * as G from './greek.js';
 import { LETTERS, DIGRAPHS, WORDS } from './data.js';
+import { VERSION } from './version.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -33,6 +34,9 @@ const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext:
 const stats = load('gt.stats', {});
 const items = load('gt.items', {});
 const modeOpts = load('gt.opts', {});
+const modeSettings = load('gt.modeSettings', {});
+let activeMode = null;
+const cfg = () => ({ ...settings, ...(activeMode ? modeSettings[activeMode] || {} : {}) });
 
 let voices = [];
 function refreshVoices() {
@@ -40,7 +44,7 @@ function refreshVoices() {
 }
 if ('speechSynthesis' in window) {
   refreshVoices();
-  speechSynthesis.onvoiceschanged = () => { refreshVoices(); if (route().name === 'settings') renderSettings(); };
+  speechSynthesis.onvoiceschanged = () => { refreshVoices(); const r = route(); if (r.name === 'settings') renderSettings(r.id); };
 }
 
 let speakToken = 0;
@@ -52,7 +56,7 @@ function speakOne(text, mul, onend) {
   u.lang = 'el-GR';
   const v = voices.find(v => v.voiceURI === settings.voice) || voices[0];
   if (v) u.voice = v;
-  u.rate = Math.max(0.3, settings.rate * mul);
+  u.rate = Math.max(0.3, cfg().rate * mul);
   u.onend = onend;
   u.onerror = onend;
   speechSynthesis.speak(u);
@@ -82,7 +86,7 @@ function speak(text, mul = 1) {
       if (fired) return;
       fired = true;
       if (token !== speakToken) return end();
-      if (i + 1 < parts.length) setTimeout(() => step(i + 1), settings.seqPause * 1000);
+      if (i + 1 < parts.length) setTimeout(() => step(i + 1), cfg().seqPause * 1000);
       else end();
     });
   };
@@ -439,7 +443,7 @@ function recordItem(mode, o, key, ok) {
 function route() {
   const h = location.hash.replace(/^#\/?/, '').split('/');
   if ((h[0] === 'mode' || h[0] === 'ref') && MODES.some(m => m.id === h[1])) return { name: h[0], id: h[1] };
-  if (h[0] === 'settings') return { name: 'settings' };
+  if (h[0] === 'settings') return { name: 'settings', id: MODES.some(m => m.id === h[1]) ? h[1] : null };
   return { name: 'home' };
 }
 
@@ -451,9 +455,12 @@ function render() {
   const r = route();
   stopSpeech();
   backBtn.hidden = r.name === 'home';
+  activeMode = r.id || null;
+  $('#settingsBtn').href = r.id ? `#/settings/${r.id}` : '#/settings';
+  $('#settingsBtn').hidden = r.name === 'settings';
   if (r.name === 'mode') renderMode(MODES.find(m => m.id === r.id));
   else if (r.name === 'ref') renderRef(MODES.find(m => m.id === r.id));
-  else if (r.name === 'settings') renderSettings();
+  else if (r.name === 'settings') renderSettings(r.id);
   else renderHome();
   window.scrollTo(0, 0);
 }
@@ -465,7 +472,7 @@ function pct(id) {
 }
 
 function renderHome() {
-  title.textContent = 'Ελληνικά';
+  title.innerHTML = `Ελληνικά <small class="ver">v${VERSION.n} · ${esc(VERSION.date)}</small>`;
   const groups = [...new Set(MODES.map(m => m.group))];
   const warn = voices.length || !('speechSynthesis' in window) ? '' : `<a class="warn" href="#/settings">Греческий голос пока не найден — открой настройки</a>`;
   view.innerHTML = warn + groups.map(g => `
@@ -530,9 +537,9 @@ function scheduleAutoNext() {
   const s = session;
   const token = ++autoToken;
   const started = Date.now();
-  const minMs = settings.autoNextDelay * 1000;
+  const minMs = cfg().autoNextDelay * 1000;
   const go = () => { if (token === autoToken && session === s && s.done) nextQuestion(); };
-  if (settings.waitSpeech) {
+  if (cfg().waitSpeech) {
     speechDone.then(() => {
       if (token !== autoToken) return;
       autoTimer = setTimeout(go, Math.max(0, minMs - (Date.now() - started)));
@@ -585,7 +592,7 @@ function renderQuestion() {
     card.innerHTML = listen ? `<div class="listen">🎧</div>${playButtons()}` : q.prompt;
     ans.innerHTML = `<div class="choices ${q.grid || ''}">${q.choices.map((c, i) => `<button data-choice="${i}" class="${c.greek ? 'greek' : ''}">${esc(c.label)}</button>`).join('')}</div>`;
   }
-  if (listen && settings.autoplay) setTimeout(() => { if (session?.q === q && !session.answered) speak(q.say); }, 250);
+  if (listen && cfg().autoplay) setTimeout(() => { if (session?.q === q && !session.answered) speak(q.say); }, 250);
 }
 
 function grade(ok, given, feedback = true) {
@@ -641,7 +648,7 @@ function showFeedback(ok, given) {
   $('#nextBtn')?.focus({ preventScroll: true });
   $('#feedback').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   if (q.sayAfter || mode.kind === 'card' || (mode.kind === 'input' && !isListen())) speak(q.sayAfter || q.say);
-  if (ok === true && settings.autoNext) scheduleAutoNext();
+  if (ok === true && cfg().autoNext) scheduleAutoNext();
 }
 
 function renderRef(mode) {
@@ -708,47 +715,68 @@ document.addEventListener('keydown', e => {
   }
 });
 
-function renderSettings() {
-  title.textContent = 'Настройки';
+function renderSettings(modeId) {
+  const mode = MODES.find(m => m.id === modeId);
+  title.textContent = mode ? `Настройки: ${mode.title}` : 'Общие настройки';
   const tts = 'speechSynthesis' in window;
+  const c = cfg();
+  const own = mode ? modeSettings[mode.id] || {} : null;
+  const mark = k => (own && k in own ? ' <span class="own">своё</span>' : '');
   view.innerHTML = `
     <section class="settings">
       ${!tts ? `<p class="warn">Браузер не поддерживает синтез речи. Открой в Chrome.</p>` : ''}
       ${tts && !voices.length ? `<div class="warn">Греческий голос не найден. На Android: Настройки → Система → Язык и ввод → Синтез речи → Google → ⚙ → Установить голосовые данные → Ελληνικά. Потом перезапусти Chrome.</div>` : ''}
-      <label>Голос
+      <p class="hint">${mode
+        ? `Действуют только в упражнении «${esc(mode.title)}». Что не меняешь здесь, берётся из <a href="#/settings">общих настроек</a>.`
+        : 'Общие настройки для всех упражнений. В каждом упражнении можно задать свои: ⚙ внутри упражнения.'}</p>
+      ${mode ? '' : `<label>Голос
         <select id="voice">${voices.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === settings.voice ? 'selected' : ''}>${esc(v.name)}${v.localService ? '' : ' (онлайн)'}</option>`).join('') || '<option>—</option>'}</select>
+      </label>`}
+      <label>Скорость речи: <b id="rateV">${c.rate.toFixed(2)}</b>${mark('rate')}
+        <input type="range" id="rate" min="0.5" max="1.3" step="0.05" value="${c.rate}">
       </label>
-      <label>Скорость речи: <b id="rateV">${settings.rate.toFixed(2)}</b>
-        <input type="range" id="rate" min="0.5" max="1.3" step="0.05" value="${settings.rate}">
+      <label class="row"><input type="checkbox" id="autoplay" ${c.autoplay ? 'checked' : ''}> Проигрывать задание сразу${mark('autoplay')}</label>
+      <label>Пауза между сочетанием и словом: <b id="seqV">${c.seqPause.toFixed(1)} с</b>${mark('seqPause')}
+        <input type="range" id="seq" min="0" max="3" step="0.1" value="${c.seqPause}">
       </label>
-      <label class="row"><input type="checkbox" id="autoplay" ${settings.autoplay ? 'checked' : ''}> Проигрывать задание сразу</label>
-      <label>Пауза между сочетанием и словом: <b id="seqV">${settings.seqPause.toFixed(1)} с</b>
-        <input type="range" id="seq" min="0" max="3" step="0.1" value="${settings.seqPause}">
-      </label>
-      <label class="row"><input type="checkbox" id="autoNext" ${settings.autoNext ? 'checked' : ''}> Сразу дальше после правильного ответа</label>
-      <label class="row"><input type="checkbox" id="waitSpeech" ${settings.waitSpeech ? 'checked' : ''}> Не переключать, пока идёт озвучка</label>
-      <label>Задержка перед следующим (считается от ответа): <b id="delayV">${settings.autoNextDelay.toFixed(1)} с</b>
-        <input type="range" id="delay" min="0" max="5" step="0.1" value="${settings.autoNextDelay}">
+      <label class="row"><input type="checkbox" id="autoNext" ${c.autoNext ? 'checked' : ''}> Сразу дальше после правильного ответа${mark('autoNext')}</label>
+      <label class="row"><input type="checkbox" id="waitSpeech" ${c.waitSpeech ? 'checked' : ''}> Не переключать, пока идёт озвучка${mark('waitSpeech')}</label>
+      <label>Задержка перед следующим (считается от ответа): <b id="delayV">${c.autoNextDelay.toFixed(1)} с</b>${mark('autoNextDelay')}
+        <input type="range" id="delay" min="0" max="5" step="0.1" value="${c.autoNextDelay}">
       </label>
       <button class="wide" id="test">🔊 Проверить голос</button>
-      <button class="wide ghost" id="reset">Сбросить статистику</button>
-      <p class="hint">Установить как приложение: меню Chrome ⋮ → «Добавить на главный экран». После первой загрузки работает без интернета.</p>
+      ${mode ? `<button class="wide ghost2" id="resetMode">Вернуть общие настройки</button>
+        <a class="wide btnlink" href="#/mode/${mode.id}">К упражнению</a>` : `<button class="wide ghost" id="reset">Сбросить статистику</button>
+      <p class="hint">Установить как приложение: меню Chrome ⋮ → «Добавить на главный экран». После первой загрузки работает без интернета.</p>`}
     </section>`;
-  $('#voice').onchange = e => { settings.voice = e.target.value; save('gt.settings', settings); };
-  $('#rate').oninput = e => { settings.rate = +e.target.value; $('#rateV').textContent = settings.rate.toFixed(2); save('gt.settings', settings); };
-  $('#autoplay').onchange = e => { settings.autoplay = e.target.checked; save('gt.settings', settings); };
-  $('#seq').oninput = e => { settings.seqPause = +e.target.value; $('#seqV').textContent = `${settings.seqPause.toFixed(1)} с`; save('gt.settings', settings); };
-  $('#delay').oninput = e => { settings.autoNextDelay = +e.target.value; $('#delayV').textContent = `${settings.autoNextDelay.toFixed(1)} с`; save('gt.settings', settings); };
-  $('#autoNext').onchange = e => { settings.autoNext = e.target.checked; save('gt.settings', settings); };
-  $('#waitSpeech').onchange = e => { settings.waitSpeech = e.target.checked; save('gt.settings', settings); };
-  $('#test').onclick = () => speak('Καλημέρα! Δεκατέσσερα ευρώ και εβδομήντα λεπτά.');
-  $('#reset').onclick = () => {
-    if (!confirm('Сбросить статистику и прогресс?')) return;
-    for (const k in stats) delete stats[k];
-    for (const k in items) delete items[k];
-    save('gt.stats', stats);
-    save('gt.items', items);
+  const set = (k, v) => {
+    if (mode) {
+      (modeSettings[mode.id] ||= {})[k] = v;
+      save('gt.modeSettings', modeSettings);
+    } else {
+      settings[k] = v;
+      save('gt.settings', settings);
+    }
   };
+  if (!mode) $('#voice').onchange = e => { settings.voice = e.target.value; save('gt.settings', settings); };
+  $('#rate').oninput = e => { set('rate', +e.target.value); $('#rateV').textContent = (+e.target.value).toFixed(2); };
+  $('#autoplay').onchange = e => set('autoplay', e.target.checked);
+  $('#seq').oninput = e => { set('seqPause', +e.target.value); $('#seqV').textContent = `${(+e.target.value).toFixed(1)} с`; };
+  $('#delay').oninput = e => { set('autoNextDelay', +e.target.value); $('#delayV').textContent = `${(+e.target.value).toFixed(1)} с`; };
+  $('#autoNext').onchange = e => set('autoNext', e.target.checked);
+  $('#waitSpeech').onchange = e => set('waitSpeech', e.target.checked);
+  $('#test').onclick = () => speak('Καλημέρα! Δεκατέσσερα ευρώ και εβδομήντα λεπτά.');
+  if (mode) {
+    $('#resetMode').onclick = () => { delete modeSettings[mode.id]; save('gt.modeSettings', modeSettings); renderSettings(mode.id); };
+  } else {
+    $('#reset').onclick = () => {
+      if (!confirm('Сбросить статистику и прогресс?')) return;
+      for (const k in stats) delete stats[k];
+      for (const k in items) delete items[k];
+      save('gt.stats', stats);
+      save('gt.items', items);
+    };
+  }
 }
 
 backBtn.addEventListener('click', () => { if (history.length > 1) history.back(); else location.hash = ''; });

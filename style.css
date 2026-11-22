@@ -175,3 +175,7 @@ table.ref td.lg { font-size: 24px; white-space: nowrap; }
 .conv .greek::after { content: "  🔊"; font-size: 15px; }
 .err { color: var(--bad); }
 .btnlink { display: block; text-align: center; text-decoration: none; margin-top: 18px; }
+.ver { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 6px; white-space: nowrap; }
+.own { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
+.wide.ghost2 { background: none; color: var(--text); border: 1px solid var(--line); margin-top: 10px; }
+.top a[hidden] { display: none; }
