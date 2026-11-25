@@ -187,3 +187,28 @@ table.ref td.lg { font-size: 24px; white-space: nowrap; }
 .range label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
 .range input { width: 110px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-size: 16px; }
 .range button { padding: 7px 14px; border: 0; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.sent { font-size: 20px; margin: 10px 0 0; line-height: 1.4; }
+.sent.big2 { font-size: 23px; margin-top: 0; }
+.hl { color: var(--accent); }
+.gap { display: inline-block; min-width: 2.2em; border-bottom: 2px solid var(--accent); color: var(--accent); text-align: center; }
+.lbl { display: inline-block; margin: 10px 0 0; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); font-size: 14px; }
+.trd { margin-top: 8px; font-size: 14px; color: var(--muted); }
+.trd summary { cursor: pointer; }
+.trd div { margin-top: 4px; font-size: 16px; color: var(--text); }
+.fwfb { text-align: left; margin-top: 10px; font-size: 15px; }
+.fwfb .greek { font-size: 18px; }
+.exl { padding: 8px 10px; margin-top: 6px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); cursor: pointer; }
+.exl small { color: var(--muted); }
+.fwnote { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.refsec { margin-bottom: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 10px; }
+.refsec > summary { padding: 12px 4px; font-weight: 600; cursor: pointer; }
+.refsec > summary small { font-weight: 400; color: var(--muted); }
+.refsec table.ref { border: 0; margin-bottom: 8px; }
+.exs { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); cursor: pointer; }
+.exs small { color: var(--muted); }
+.exlist { margin-bottom: 10px; }
+table.para td { text-align: center; padding: 7px 6px; }
+table.para td.greek { font-size: 18px; }
+table.para td.ph { color: var(--muted); font-size: 13px; }
+table.para td.blank { background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 18px; }
+table.fwref td:first-child { width: 32%; }

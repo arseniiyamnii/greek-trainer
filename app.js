@@ -1,6 +1,7 @@
 import * as G from './greek.js';
 import { LETTERS, DIGRAPHS, WORDS } from './data.js';
 import { VERSION } from './version.js';
+import { FW_MODES } from './fw.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -432,6 +433,8 @@ const MODES = [
   },
 ];
 
+MODES.push(...FW_MODES);
+
 function numbersCheat() {
   const row = ns => ns.map(n => `<tr><td>${fmtInt(n)}</td><td class="greek">${G.num(n)}</td></tr>`).join('');
   return `<table>${row([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 30, 40, 50, 60, 70, 80, 90, 100, 101, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 1000000])}</table>
@@ -525,7 +528,7 @@ function renderMode(mode) {
     <div class="card" id="card"></div>
     <div id="answer"></div>
     <div id="feedback"></div>
-    ${mode.cheat ? `<details class="cheat" id="cheat"><summary>Шпаргалка <small>· с ней ответ не засчитывается</small></summary><div>${mode.cheat()}</div></details>` : ''}`;
+    ${mode.cheat ? `<details class="cheat" id="cheat"><summary>Шпаргалка <small>· с ней ответ не засчитывается</small></summary><div>${mode.cheat(session.opts)}</div></details>` : ''}`;
   view.querySelectorAll('.seg').forEach(seg => {
     seg.addEventListener('click', e => {
       const b = e.target.closest('button');
@@ -537,6 +540,8 @@ function renderMode(mode) {
       session.seen = {};
       syncSegs();
       renderExtra();
+      const cd = $('#cheat > div');
+      if (cd) cd.innerHTML = mode.cheat(session.opts);
       nextQuestion();
     });
   });
@@ -700,6 +705,7 @@ function showFeedback(ok, given, cheated = false) {
       ${head}
       <div class="ans">${esc(q.answer)}</div>
       ${greekText ? `<div class="gr greek">${esc(greekText)}</div>` : ''}
+      ${q.html || ''}
       ${q.say || q.sayAfter ? playButtons() : ''}
       ${ok === null
         ? `<div class="self"><button data-act="know">✓ Знал</button><button data-act="dontknow">✗ Не знал</button></div>`
@@ -726,7 +732,7 @@ function showFeedback(ok, given, cheated = false) {
 
 function renderRef(mode) {
   title.textContent = `Словарь: ${mode.title}`;
-  const ref = mode.ref();
+  const ref = mode.ref(optsFor(mode));
   if (ref.html) {
     view.innerHTML = `<p class="hint">Нажми на строку или слово, чтобы послушать.</p>${ref.html}
       <a class="wide btnlink" href="#/mode/${mode.id}">К упражнению</a>`;
