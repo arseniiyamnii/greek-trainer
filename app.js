@@ -476,6 +476,12 @@ const GOALS = {
 };
 for (const m of MODES) if (!m.goals) m.goals = GOALS[m.id] || [{}];
 
+const WEIGHTS = {
+  letters: 2, letterNames: 1, digraphs: 1, digraphSounds: 1, reading: 3,
+  numbers: 20, time: 5, dates: 4, calendar: 1,
+  fwMean: 15, fwGreek: 12, fwListen: 8, fwGap: 12, fwTraps: 3, tblFill: 4, tblPick: 4, tblWhat: 4,
+};
+
 for (const m of MODES) {
   if (!m.scopeOpts || m.scopeOpts.length) continue;
   for (const k of Object.keys(items)) {
@@ -514,8 +520,14 @@ function modeDone(m) {
 }
 
 function overallHtml() {
-  const all = MODES.map(modeDone).filter(v => v !== null);
-  const total = all.reduce((a, b) => a + b, 0) / all.length;
+  let sum = 0, wsum = 0;
+  for (const m of MODES) {
+    const w = WEIGHTS[m.id] || 0, v = w ? modeDone(m) : null;
+    if (v === null) continue;
+    sum += w * v;
+    wsum += w;
+  }
+  const total = wsum ? sum / wsum : 0;
   const st = streak(), today = days[dayKey()] || 0;
   const pctS = `${total > 0 && total < 0.01 ? '<1' : Math.floor(total * 100)}%`;
   return `<div class="overall">
@@ -602,7 +614,7 @@ function renderHome() {
     <section><h2>${g}</h2><div class="tiles">
       ${MODES.filter(m => m.group === g).map(m => `
         <a class="tile" href="#/mode/${m.id}"><b>${m.title}</b><span>${m.sub}</span><i>${progressText(m, optsFor(m))}${pct(m.id)}</i></a>`).join('')}
-    </div></section>`).join('') + `<p class="hint center">«Выучено» — ответил правильно два раза подряд. В «Числах» — каждая цифра в каждом разряде три раза подряд.<br>«Пройдено» — все упражнения на полном уровне (числа до 10 млн на слух и при чтении, служебные слова уровня «всё»); цены и телефоны не учитываются. День засчитывается после ${DAY_GOAL} ответов.</p>`;
+    </div></section>`).join('') + `<p class="hint center">«Выучено» — ответил правильно два раза подряд. В «Числах» — каждая цифра в каждом разряде три раза подряд.<br>«Язык пройден» — взвешенно: служебные слова ≈ 60%, числа 20%, время и даты 10%, алфавит 8%. Всё на полном уровне: числа до 10 млн на слух и при чтении, служебные слова уровня «всё». День засчитывается после ${DAY_GOAL} ответов.</p>`;
 }
 
 let session = null;
