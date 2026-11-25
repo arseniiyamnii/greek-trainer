@@ -125,10 +125,10 @@ export const FW_MODES = [
       const opts = shuffle([w, ...others(w, 3, x => x.ru)]);
       return {
         key: w.id,
-        prompt: `<span class="mid greek">${esc(w.el)}</span><p class="sent greek">${hl(e[0])}</p>${trBox(e[1])}`,
+        prompt: `<span class="mid greek" ${sayAttr(w.el)}>${esc(w.el)}</span><p class="sent greek" ${sayAttr(plain(e[0]))}>${hl(e[0])}</p>${trBox(e[1])}`,
         choices: opts.map(x => ({ label: x.ru, ok: x === w })),
         answer: `${w.el} — ${w.ru}`, greek: w.tr, html: wordFb(w, e),
-        sayAfter: [w.el, plain(e[0])],
+        say: [w.el, plain(e[0])], sayAfter: [w.el, plain(e[0])],
       };
     },
   },
@@ -192,9 +192,9 @@ export const FW_MODES = [
       }
       return {
         key: `${tp.id}:${side}`,
-        prompt: `<p class="sent greek big2">${hl(e[0])}</p><p class="hint">Что здесь значит выделенное слово?</p>${trBox(e[1])}`,
+        prompt: `<p class="sent greek big2" ${sayAttr(plain(e[0]))}>${hl(e[0])}</p><p class="hint">Что здесь значит выделенное слово?</p>${trBox(e[1])}`,
         choices: both.map(x => ({ label: x.ru, ok: x === s })),
-        answer: `${s.el} — ${s.ru}`, html: fb, sayAfter: plain(e[0]),
+        answer: `${s.el} — ${s.ru}`, html: fb, say: plain(e[0]), sayAfter: plain(e[0]),
       };
     },
     ref: () => ({
@@ -254,7 +254,8 @@ export const FW_MODES = [
       const opts = shuffle([right, ...shuffle(diff).slice(0, 3)]);
       return {
         key: `${t.id}:${r}.${c}`,
-        prompt: `<p class="hint">${esc(t.title)}</p><p class="sent greek big2">${hl(e[0])}</p><p class="hint">${esc(e[2])}</p>`,
+        prompt: `<p class="hint">${esc(t.title)}</p><p class="sent greek big2" ${sayAttr(plain(e[0]))}>${hl(e[0])}</p><p class="hint">${esc(e[2])}</p>`,
+        say: plain(e[0]),
         choices: opts.map(v => ({ label: v, ok: v === right })),
         answer: `${f} — ${right}`, greek: same.length ? `так же выглядит: ${same.join('; ')}` : '', html: cellFb(x, e),
         sayAfter: plain(e[0]),

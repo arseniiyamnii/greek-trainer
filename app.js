@@ -664,10 +664,10 @@ function renderQuestion() {
     card.innerHTML = `${shown}<p class="hint">${q.hint || 'Скажи вслух по-гречески'}</p>`;
     ans.innerHTML = `<button class="wide" data-act="reveal">Показать ответ</button>`;
   } else {
-    card.innerHTML = listen ? `<div class="listen">🎧</div>${playButtons()}` : q.prompt;
+    card.innerHTML = listen ? `<div class="listen">🎧</div>${playButtons()}` : q.prompt + (q.say ? playButtons() : '');
     ans.innerHTML = `<div class="choices ${q.grid || ''}">${q.choices.map((c, i) => `<button data-choice="${i}" class="${c.greek ? 'greek' : ''}">${esc(c.label)}</button>`).join('')}</div>`;
   }
-  if (listen && cfg().autoplay) setTimeout(() => { if (session?.q === q && !session.answered) speak(q.say); }, 250);
+  if ((listen || (mode.kind === 'choice' && q.say)) && cfg().autoplay) setTimeout(() => { if (session?.q === q && !session.answered) speak(q.say); }, 250);
 }
 
 function grade(ok, given, feedback = true) {
