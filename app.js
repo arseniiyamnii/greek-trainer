@@ -514,20 +514,14 @@ function modeDone(m) {
 }
 
 function overallHtml() {
-  const groups = [...new Set(MODES.map(m => m.group))].map(g => {
-    const vals = MODES.filter(m => m.group === g).map(modeDone).filter(v => v !== null);
-    return { g, v: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0, n: vals.length };
-  });
   const all = MODES.map(modeDone).filter(v => v !== null);
   const total = all.reduce((a, b) => a + b, 0) / all.length;
-  const cur = groups.find(x => x.v < 0.9);
   const st = streak(), today = days[dayKey()] || 0;
-  const pctS = v => `${v > 0 && v < 0.01 ? '<1' : Math.floor(v * 100)}%`;
+  const pctS = `${total > 0 && total < 0.01 ? '<1' : Math.floor(total * 100)}%`;
   return `<div class="overall">
-    <div class="ovtop"><b>Пройдено ${pctS(total)}</b><span>🔥 ${st} ${plural(st, 'день', 'дня', 'дней')} подряд</span></div>
+    <div class="ovtop"><b>Язык пройден на ${pctS}</b><span>🔥 ${st} ${plural(st, 'день', 'дня', 'дней')} подряд</span></div>
     <div class="bar"><i style="width:${(total * 100).toFixed(1)}%"></i></div>
     <div class="ovday">Сегодня: ${today} из ${DAY_GOAL} ответов${today >= DAY_GOAL ? ' ✓' : ''}</div>
-    ${groups.map(x => `<div class="grp ${x === cur ? 'cur' : ''}"><span>${x.g}${x === cur ? ' <small>← сейчас</small>' : ''}</span><span>${pctS(x.v)}</span><div class="bar sm"><i style="width:${(x.v * 100).toFixed(1)}%"></i></div></div>`).join('')}
   </div>`;
 }
 
