@@ -665,7 +665,7 @@ function renderQuestion() {
     ans.innerHTML = `<button class="wide" data-act="reveal">Показать ответ</button>`;
   } else {
     card.innerHTML = listen ? `<div class="listen">🎧</div>${playButtons()}` : q.prompt + (q.say ? playButtons() : '');
-    ans.innerHTML = `<div class="choices ${q.grid || ''}">${q.choices.map((c, i) => `<button data-choice="${i}" class="${c.greek ? 'greek' : ''}">${esc(c.label)}</button>`).join('')}</div>`;
+    ans.innerHTML = `<div class="choices ${q.grid || ''}">${q.choices.map((c, i) => `<button data-choice="${i}" class="${c.greek ? 'greek' : ''}">${esc(c.label)}</button>`).join('')}</div><button class="wide ghost2 idk" data-act="idk">🤷 Не знаю</button>`;
   }
   if ((listen || (mode.kind === 'choice' && q.say)) && cfg().autoplay) setTimeout(() => { if (session?.q === q && !session.answered) speak(q.say); }, 250);
 }
@@ -713,6 +713,8 @@ function showFeedback(ok, given, cheated = false) {
     </div>`;
   const ans = $('#answer');
   if (mode.kind === 'choice') {
+    const idk = $('.idk', ans);
+    if (idk) idk.hidden = true;
     ans.querySelectorAll('[data-choice]').forEach(b => {
       const c = q.choices[+b.dataset.choice];
       b.disabled = true;
@@ -775,6 +777,7 @@ view.addEventListener('click', e => {
   if (act === 'play') speak(what);
   else if (act === 'slow') speak(what, 0.6);
   else if (act === 'next') nextQuestion();
+  else if (act === 'idk' && !session.done) grade(false, null);
   else if (act === 'reveal') { session.done = false; showFeedback(null); }
   else if (act === 'know' || act === 'dontknow') {
     session.done = false;

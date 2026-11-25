@@ -212,3 +212,4 @@ table.para td.greek { font-size: 18px; }
 table.para td.ph { color: var(--muted); font-size: 13px; }
 table.para td.blank { background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 18px; }
 table.fwref td:first-child { width: 32%; }
+.idk[hidden] { display: none; }
