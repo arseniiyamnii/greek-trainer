@@ -75,6 +75,9 @@ function wordsRef(o) {
 const wordModeBase = {
   group: 'Служебные слова', kind: 'choice',
   options: [LVL, CAT],
+  scopeOpts: [],
+  goals: [{ lvl: '3', cat: 'all' }],
+  units: o => wordPool(o).map(w => w.id),
   size: o => wordPool(o).length,
   ref: o => ({ html: wordsRef(o) }),
   cheat: o => wordRows(wordPool(o)),
@@ -110,6 +113,9 @@ function tableRef(t, open) {
 const tableModeBase = {
   group: 'Служебные слова', kind: 'choice',
   options: [LVL, TBL],
+  scopeOpts: [],
+  goals: [{ lvl: '3', tbl: 'all' }],
+  units: o => tablePool(o).map(x => `${x.t.id}:${x.r}.${x.c}`),
   size: o => tablePool(o).length,
   ref: o => ({ html: FW_TABLES.map(t => tableRef(t, o && (o.tbl === t.id || (o.tbl === 'all' && t.lvl === 1)))).join('') }),
   cheat: o => (o.tbl === 'all' ? FW_TABLES.filter(t => t.lvl <= +o.lvl) : FW_TABLES.filter(t => t.id === o.tbl)).map(t => `<h3>${esc(t.title)}</h3>${tableHtml(t)}`).join(''),
@@ -177,6 +183,7 @@ export const FW_MODES = [
   {
     id: 'fwTraps', group: 'Служебные слова', title: 'Ловушки', sub: 'πού/που, πώς/πως, με…', kind: 'choice',
     size: () => FW_TRAPS.length * 2,
+    units: () => FW_TRAPS.flatMap(tp => [`${tp.id}:a`, `${tp.id}:b`]),
     gen() {
       const tp = pick(FW_TRAPS), side = pick(['a', 'b']), s = tp[side], e = pick(s.ex);
       const both = [tp.a, tp.b];

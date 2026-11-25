@@ -213,3 +213,15 @@ table.para td.ph { color: var(--muted); font-size: 13px; }
 table.para td.blank { background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 18px; }
 table.fwref td:first-child { width: 32%; }
 .idk[hidden] { display: none; }
+.overall { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin: 4px 0 6px; }
+.ovtop { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ovtop b { font-size: 19px; }
+.ovtop span { font-size: 15px; }
+.bar { height: 10px; border-radius: 999px; background: var(--accent-soft); overflow: hidden; margin: 8px 0 4px; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; min-width: 2px; }
+.bar.sm { height: 6px; margin: 3px 0 0; grid-column: 1 / -1; }
+.ovday { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.grp { display: grid; grid-template-columns: 1fr auto; font-size: 14px; margin-top: 8px; color: var(--muted); }
+.grp.cur { color: var(--text); font-weight: 600; }
+.grp small { color: var(--accent); font-weight: 400; }
+.readq { font-size: 26px; line-height: 1.35; }

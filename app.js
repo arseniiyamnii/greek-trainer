@@ -147,7 +147,26 @@ function digraphTable() {
   return `<table class="ref">${DIGRAPHS.map(d => `<tr><td class="greek lg" ${sayAttr(d.syl)}>${d.g}</td><td>${d.sound}${d.note ? `<br><small>${d.note}</small>` : ''}</td><td>${d.words.map(([w, ru]) => `<button class="chip" ${sayAttr([d.syl, w])}><span class="greek">${w}</span><small>${ru}</small></button>`).join('')}</td></tr>`).join('')}</table>`;
 }
 
-const DIR = { key: 'dir', label: 'Режим', values: [['listen', 'Слушать'], ['speak', 'Говорить']] };
+const DIR = { key: 'dir', label: 'Режим', values: [['listen', 'Слушать'], ['read', 'Читать'], ['speak', 'Говорить']] };
+
+const RANGES = { 9: [0, 9], '10-20': [10, 20], 100: [0, 100], 1000: [100, 999], '1e4': [1000, 9999], '1e6': [1000, 999999], '1e7': [0, 9999999] };
+const numBounds = o => (o.range === 'custom' ? [o.from, o.to] : RANGES[o.range] || [0, 9]);
+function digitUnits(lo, hi) {
+  const out = [];
+  for (let p = 0, P = 1; P <= Math.max(hi, 1); p++, P *= 10) {
+    const M = P * 10;
+    const lo2 = Math.max(lo, p ? P : 0);
+    if (lo2 > hi) continue;
+    for (let d = 0; d < 10; d++) {
+      let base = Math.floor(lo2 / M) * M + d * P;
+      if (base + P - 1 < lo2) base += M;
+      const n = Math.max(base, lo2);
+      if (n <= hi && Math.floor(n / P) % 10 === d && (p === 0 || n >= P)) out.push(`p${p}d${d}`);
+    }
+  }
+  return out;
+}
+const numUnitKeys = n => [...String(n)].reverse().map((d, p) => `p${p}d${d}`);
 
 const MODES = [
   {
@@ -247,11 +266,24 @@ const MODES = [
     cheat: () => `<p>ð — как th в англ. <i>this</i>, θ — как th в <i>think</i>. Ударная гласная отмечена знаком ´.</p><p>Заглавными буквами ударение не пишут: ΦΑΡΜΑΚΕΙΟ = φαρμακείο. Ударение приходится угадывать или знать.</p>`,
   },
   {
-    id: 'numbers', group: 'Числа', title: 'Числа', sub: 'от нуля до миллиона', kind: 'input', inputmode: 'numeric', placeholder: 'число',
-    options: [DIR, { key: 'range', label: 'Диапазон', values: [['9', '0–9'], ['10-20', '10–20'], ['100', '0–100'], ['1000', '100–999'], ['1e4', '1 000–9 999'], ['1e6', 'до 1 млн'], ['custom', 'свой']] }],
+    id: 'numbers', group: 'Числа', title: 'Числа', sub: 'от нуля до 10 миллионов', kind: 'input', inputmode: 'numeric', placeholder: 'число',
+    options: [DIR, { key: 'range', label: 'Диапазон', values: [['9', '0–9'], ['10-20', '10–20'], ['100', '0–100'], ['1000', '100–999'], ['1e4', '1 000–9 999'], ['1e6', 'до 1 млн'], ['1e7', 'до 10 млн'], ['custom', 'свой']] }],
     defaults: { from: 0, to: 50 },
-    scopeExtra: o => (o.range === 'custom' ? `${o.from}-${o.to}` : ''),
-    size: o => (o.range === 'custom' ? o.to - o.from + 1 : ({ 9: 10, '10-20': 11, 100: 101, 1000: 900, '1e4': 9000 })[o.range] ?? null),
+    scopeOpts: ['dir'],
+    need: 3,
+    goals: [{ dir: 'listen', range: '1e7' }, { dir: 'read', range: '1e7' }],
+    units: o => digitUnits(...numBounds(o)),
+    size: o => digitUnits(...numBounds(o)).length,
+    record(sc, q, given, ok, cheated) {
+      const got = ok ? String(q.key) : digits(given || '');
+      const want = String(q.key);
+      numUnitKeys(q.key).forEach((k, p) => {
+        const hit = !cheated && given !== null && got[got.length - 1 - p] === want[want.length - 1 - p];
+        sc[k] = hit ? (sc[k] || 0) + 1 : 0;
+      });
+    },
+    freshScore: (q, sc) => numUnitKeys(q.key).reduce((a, k) => a + Math.min(sc[k] || 0, 3) - 3, 0) / 3,
+    progressHint: 'цифра в разряде — 3 раза подряд',
     extra: o => (o.range === 'custom' ? `<form class="range" id="rangeForm">
         <label>от <input id="rFrom" inputmode="numeric" autocomplete="off" value="${o.from}"></label>
         <label>до <input id="rTo" inputmode="numeric" autocomplete="off" value="${o.to}"></label>
@@ -276,6 +308,7 @@ const MODES = [
       else if (o.range === '100') n = rnd(0, 100);
       else if (o.range === '1000') n = rnd(100, 999);
       else if (o.range === '1e4') n = rnd(1000, 9999);
+      else if (o.range === '1e7') n = Math.random() < 0.15 ? rnd(0, 99999) : rnd(0, 9999999);
       else n = Math.random() < 0.5 ? rnd(10, 999) * 1000 : rnd(1000, 999999);
       return { key: n, say: G.num(n), display: fmtInt(n), answer: fmtInt(n), check: s => digits(s) === String(n) && digits(s).length > 0 };
     },
@@ -435,6 +468,69 @@ const MODES = [
 
 MODES.push(...FW_MODES);
 
+const GOALS = {
+  prices: [], phone: [],
+  time: [{ dir: 'listen', style: 'spoken' }, { dir: 'read', style: 'spoken' }],
+  dates: [{ dir: 'listen' }, { dir: 'read' }],
+  calendar: [{ what: 'days' }, { what: 'months' }],
+};
+for (const m of MODES) if (!m.goals) m.goals = GOALS[m.id] || [{}];
+
+for (const m of MODES) {
+  if (!m.scopeOpts || m.scopeOpts.length) continue;
+  for (const k of Object.keys(items)) {
+    if (!k.startsWith(`${m.id}|`)) continue;
+    const dst = (items[m.id] ||= {});
+    for (const [key, v] of Object.entries(items[k])) dst[key] = Math.max(dst[key] || 0, v);
+    delete items[k];
+  }
+}
+save('gt.items', items);
+
+const days = load('gt.days', {});
+const DAY_GOAL = 20;
+const dayKey = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+function bumpDay() {
+  const k = dayKey();
+  days[k] = (days[k] || 0) + 1;
+  save('gt.days', days);
+}
+function streak() {
+  const d = new Date();
+  if ((days[dayKey(d)] || 0) < DAY_GOAL) d.setDate(d.getDate() - 1);
+  let n = 0;
+  while ((days[dayKey(d)] || 0) >= DAY_GOAL) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+const plural = (n, a, b, c) => (n % 10 === 1 && n % 100 !== 11 ? a : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? b : c);
+
+function modeDone(m) {
+  const parts = m.goals.map(g => {
+    const o = { ...optsFor(m), ...g };
+    const total = m.size ? m.size(o) : 0;
+    return total ? Math.min(1, learnedCount(m, o) / total) : null;
+  }).filter(v => v !== null);
+  return parts.length ? parts.reduce((a, b) => a + b, 0) / parts.length : null;
+}
+
+function overallHtml() {
+  const groups = [...new Set(MODES.map(m => m.group))].map(g => {
+    const vals = MODES.filter(m => m.group === g).map(modeDone).filter(v => v !== null);
+    return { g, v: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0, n: vals.length };
+  });
+  const all = MODES.map(modeDone).filter(v => v !== null);
+  const total = all.reduce((a, b) => a + b, 0) / all.length;
+  const cur = groups.find(x => x.v < 0.9);
+  const st = streak(), today = days[dayKey()] || 0;
+  const pctS = v => `${v > 0 && v < 0.01 ? '<1' : Math.floor(v * 100)}%`;
+  return `<div class="overall">
+    <div class="ovtop"><b>Пройдено ${pctS(total)}</b><span>🔥 ${st} ${plural(st, 'день', 'дня', 'дней')} подряд</span></div>
+    <div class="bar"><i style="width:${(total * 100).toFixed(1)}%"></i></div>
+    <div class="ovday">Сегодня: ${today} из ${DAY_GOAL} ответов${today >= DAY_GOAL ? ' ✓' : ''}</div>
+    ${groups.map(x => `<div class="grp ${x === cur ? 'cur' : ''}"><span>${x.g}${x === cur ? ' <small>← сейчас</small>' : ''}</span><span>${pctS(x.v)}</span><div class="bar sm"><i style="width:${(x.v * 100).toFixed(1)}%"></i></div></div>`).join('')}
+  </div>`;
+}
+
 function numbersCheat() {
   const row = ns => ns.map(n => `<tr><td>${fmtInt(n)}</td><td class="greek">${G.num(n)}</td></tr>`).join('');
   return `<table>${row([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 30, 40, 50, 60, 70, 80, 90, 100, 101, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 1000000])}</table>
@@ -449,10 +545,13 @@ function optsFor(mode) {
   return o;
 }
 
-const scopeId = (mode, o) => [mode.id, ...(mode.options || []).map(op => o[op.key]), mode.scopeExtra ? mode.scopeExtra(o) : ''].filter(Boolean).join('|');
+const scopeId = (mode, o) => [mode.id, ...(mode.options || []).filter(op => !mode.scopeOpts || mode.scopeOpts.includes(op.key)).map(op => o[op.key]), mode.scopeExtra ? mode.scopeExtra(o) : ''].filter(Boolean).join('|');
 
 function learnedCount(mode, o) {
-  return Object.values(items[scopeId(mode, o)] || {}).filter(v => v >= 2).length;
+  const sc = items[scopeId(mode, o)] || {};
+  const need = mode.need || 2;
+  if (mode.units) return mode.units(o).filter(k => (sc[k] || 0) >= need).length;
+  return Object.values(sc).filter(v => v >= need).length;
 }
 
 function progressText(mode, o) {
@@ -461,10 +560,11 @@ function progressText(mode, o) {
   return total ? `выучено ${n} из ${total}` : `выучено ${n}`;
 }
 
-function recordItem(mode, o, key, ok) {
-  if (key === undefined) return;
+function recordItem(mode, o, q, ok, given, cheated) {
+  if (q.key === undefined) return;
   const sc = (items[scopeId(mode, o)] ||= {});
-  sc[key] = ok ? (sc[key] || 0) + 1 : 0;
+  if (mode.record) mode.record(sc, q, given, ok, cheated);
+  else sc[q.key] = ok ? (sc[q.key] || 0) + 1 : 0;
   save('gt.items', items);
 }
 
@@ -504,11 +604,11 @@ function renderHome() {
   title.textContent = 'Ελληνικά';
   const groups = [...new Set(MODES.map(m => m.group))];
   const warn = voices.length || !('speechSynthesis' in window) ? '' : `<a class="warn" href="#/settings">Греческий голос пока не найден — открой настройки</a>`;
-  view.innerHTML = warn + groups.map(g => `
+  view.innerHTML = warn + overallHtml() + groups.map(g => `
     <section><h2>${g}</h2><div class="tiles">
       ${MODES.filter(m => m.group === g).map(m => `
         <a class="tile" href="#/mode/${m.id}"><b>${m.title}</b><span>${m.sub}</span><i>${progressText(m, optsFor(m))}${pct(m.id)}</i></a>`).join('')}
-    </div></section>`).join('') + `<p class="hint center">«Выучено» — ответил правильно два раза подряд.</p>`;
+    </div></section>`).join('') + `<p class="hint center">«Выучено» — ответил правильно два раза подряд. В «Числах» — каждая цифра в каждом разряде три раза подряд.<br>«Пройдено» — все упражнения на полном уровне (числа до 10 млн на слух и при чтении, служебные слова уровня «всё»); цены и телефоны не учитываются. День засчитывается после ${DAY_GOAL} ответов.</p>`;
 }
 
 let session = null;
@@ -585,7 +685,7 @@ function updateScore() {
 
 function isListen() {
   const { mode, opts } = session;
-  if (mode.kind === 'input') return opts.dir !== 'speak';
+  if (mode.kind === 'input') return opts.dir === 'listen';
   return !!mode.listen;
 }
 
@@ -614,7 +714,8 @@ function pickFresh(s) {
   let best = null, bestScore = Infinity;
   for (let i = 0; i < 40; i++) {
     const q = s.mode.gen(s.opts);
-    const score = (q.key === prev ? 1000 : 0) + (s.seen[q.key] || 0) * 10 + Math.min(streaks[q.key] || 0, 5) + Math.random();
+    const base = s.mode.freshScore ? s.mode.freshScore(q, streaks) : Math.min(streaks[q.key] || 0, 5);
+    const score = (q.key === prev ? 1000 : 0) + (s.seen[q.key] || 0) * 10 + base + Math.random();
     if (score < bestScore) { best = q; bestScore = score; }
   }
   return best;
@@ -653,8 +754,11 @@ function renderQuestion() {
   $('#feedback').innerHTML = '';
   updateScore();
 
-  if (mode.kind === 'input' && listen) {
-    card.innerHTML = `<div class="listen">🎧</div><p class="hint">Послушай и запиши цифрами</p>${playButtons()}`;
+  const read = mode.kind === 'input' && session.opts.dir === 'read';
+  if (mode.kind === 'input' && (listen || read)) {
+    card.innerHTML = listen
+      ? `<div class="listen">🎧</div><p class="hint">Послушай и запиши цифрами</p>${playButtons()}`
+      : `<div class="mid greek readq">${esc(q.say)}</div><p class="hint">Прочитай и запиши цифрами</p>`;
     ans.innerHTML = `<form class="inp"><input id="inp" inputmode="${mode.inputmode}" autocomplete="off" placeholder="${mode.placeholder} · пусто = не знаю"><button>Проверить</button></form>`;
     const f = $('form', ans), inp = $('#inp');
     f.addEventListener('submit', e => { e.preventDefault(); const v = inp.value.trim(); grade(!!v && q.check(v), v || null); });
@@ -690,7 +794,8 @@ function grade(ok, given, feedback = true) {
   st.total++;
   if (ok) st.ok++;
   save('gt.stats', stats);
-  recordItem(s.mode, s.opts, q.key, ok);
+  recordItem(s.mode, s.opts, q, ok, given, cheated);
+  bumpDay();
   updateScore();
   if (feedback) showFeedback(raw, given, cheated);
 }
