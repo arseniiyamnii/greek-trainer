@@ -73,6 +73,7 @@ function wordsRef(o) {
 }
 
 const wordModeBase = {
+  keyed: true,
   group: 'Служебные слова', kind: 'choice',
   options: [LVL, CAT],
   scopeOpts: [],
@@ -86,6 +87,12 @@ const wordModeBase = {
 const cellForms = f => (f.includes('(') ? [f.replace(/\(.*?\)/g, ''), f.replace(/[()]/g, '')] : [f]);
 const cellLabel = (t, r, c) => `${t.rows[r]} · ${t.cols[c]}`;
 const markText = e => (e[0].match(/\[([^\]]+)\]/) || [])[1] || '';
+
+function cellByKey(key) {
+  const [tid, rc] = key.split(':'), [r, c] = rc.split('.').map(Number);
+  const t = FW_TABLES.find(x => x.id === tid);
+  return { t, r, c, f: t.cells[r][c] };
+}
 
 function tablePool(o) {
   const ts = o.tbl === 'all' ? FW_TABLES.filter(t => t.lvl <= +o.lvl) : FW_TABLES.filter(t => t.id === o.tbl);
@@ -111,6 +118,7 @@ function tableRef(t, open) {
 }
 
 const tableModeBase = {
+  keyed: true,
   group: 'Служебные слова', kind: 'choice',
   options: [LVL, TBL],
   scopeOpts: [],
@@ -126,8 +134,8 @@ const cellFb = (x, e) => `<div class="fwfb">${exHtml(e)}${x.t.note ? `<p class="
 export const FW_MODES = [
   {
     ...wordModeBase, id: 'fwMean', title: 'Что значит', sub: 'греческое слово → смысл',
-    gen(o) {
-      const w = pick(wordPool(o)), e = pick(w.ex);
+    gen(o, key) {
+      const w = key ? BY_ID[key] : pick(wordPool(o)), e = pick(w.ex);
       const opts = shuffle([w, ...others(w, 3, x => x.ru)]);
       return {
         key: w.id,
@@ -140,8 +148,8 @@ export const FW_MODES = [
   },
   {
     ...wordModeBase, id: 'fwGreek', title: 'Как сказать', sub: 'смысл → греческое слово',
-    gen(o) {
-      const w = pick(wordPool(o)), e = pick(w.ex);
+    gen(o, key) {
+      const w = key ? BY_ID[key] : pick(wordPool(o)), e = pick(w.ex);
       const opts = shuffle([w, ...others(w, 3, x => x.el, x => x.ru !== w.ru)]);
       return {
         key: w.id,
@@ -154,8 +162,8 @@ export const FW_MODES = [
   },
   {
     ...wordModeBase, id: 'fwListen', title: 'Слова на слух', sub: 'слово и фраза → выбери', listen: true,
-    gen(o) {
-      const w = pick(wordPool(o)), e = pick(w.ex);
+    gen(o, key) {
+      const w = key ? BY_ID[key] : pick(wordPool(o)), e = pick(w.ex);
       const opts = shuffle([w, ...others(w, 3, x => phon(x.el))]);
       return {
         key: w.id,
@@ -167,8 +175,8 @@ export const FW_MODES = [
   },
   {
     ...wordModeBase, id: 'fwGap', title: 'Вставь слово', sub: 'фраза с пропуском',
-    gen(o) {
-      const w = pick(wordPool(o)), e = pick(w.ex);
+    gen(o, key) {
+      const w = key ? BY_ID[key] : pick(wordPool(o)), e = pick(w.ex);
       const first = e[0].trimStart().startsWith('[');
       const opts = shuffle([w, ...others(w, 3, x => lc(x.el))]);
       return {
@@ -184,8 +192,10 @@ export const FW_MODES = [
     id: 'fwTraps', group: 'Служебные слова', title: 'Ловушки', sub: 'πού/που, πώς/πως, με…', kind: 'choice',
     size: () => FW_TRAPS.length * 2,
     units: () => FW_TRAPS.flatMap(tp => [`${tp.id}:a`, `${tp.id}:b`]),
-    gen() {
-      const tp = pick(FW_TRAPS), side = pick(['a', 'b']), s = tp[side], e = pick(s.ex);
+    keyed: true,
+    gen(o, key) {
+      const [tid, ks] = key ? key.split(':') : [];
+      const tp = key ? FW_TRAPS.find(x => x.id === tid) : pick(FW_TRAPS), side = ks || pick(['a', 'b']), s = tp[side], e = pick(s.ex);
       const both = [tp.a, tp.b];
       const fb = `<div class="fwfb">${exHtml(e)}<p class="fwnote">${esc(tp.rule)}</p></div>`;
       if (tp.kind === 'spell') {
@@ -212,8 +222,8 @@ export const FW_MODES = [
   },
   {
     ...tableModeBase, id: 'tblFill', title: 'Таблицы: клетка', sub: 'заполни пустую клетку',
-    gen(o) {
-      const x = pick(tablePool(o)), { t, r, c, f } = x, e = t.ex[`${r}.${c}`];
+    gen(o, key) {
+      const x = key ? cellByKey(key) : pick(tablePool(o)), { t, r, c, f } = x, e = t.ex[`${r}.${c}`];
       const all = [...new Set(t.cells.flat().filter(Boolean))].filter(v => v !== f);
       const opts = shuffle([f, ...shuffle(all).slice(0, 3)]);
       return {
@@ -227,8 +237,8 @@ export const FW_MODES = [
   },
   {
     ...tableModeBase, id: 'tblPick', title: 'Таблицы: форма', sub: 'выбери форму в фразе',
-    gen(o) {
-      const x = pick(tablePool(o)), { t, r, c, f } = x, e = t.ex[`${r}.${c}`];
+    gen(o, key) {
+      const x = key ? cellByKey(key) : pick(tablePool(o)), { t, r, c, f } = x, e = t.ex[`${r}.${c}`];
       const surf = markText(e), own = cellForms(f).map(lc);
       const pool = [];
       t.cells.forEach(row => row.forEach(g => {
@@ -249,8 +259,8 @@ export const FW_MODES = [
   },
   {
     ...tableModeBase, id: 'tblWhat', title: 'Таблицы: что за форма', sub: 'род, число, падеж, лицо',
-    gen(o) {
-      const x = pick(tablePool(o)), { t, r, c, f } = x, e = t.ex[`${r}.${c}`];
+    gen(o, key) {
+      const x = key ? cellByKey(key) : pick(tablePool(o)), { t, r, c, f } = x, e = t.ex[`${r}.${c}`];
       const own = cellForms(f).map(lc);
       const same = [], diff = [];
       t.cells.forEach((row, rr) => row.forEach((g, cc) => {

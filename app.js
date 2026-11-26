@@ -31,7 +31,7 @@ function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true, autoNextDelay: 0, seqPause: 0.6, waitSpeech: true }, load('gt.settings', {}));
+const settings = Object.assign({ rate: 0.9, voice: '', autoplay: true, autoNext: true, autoNextDelay: 0, seqPause: 0.6, waitSpeech: true, varyRepeat: false }, load('gt.settings', {}));
 const stats = load('gt.stats', {});
 const items = load('gt.items', {});
 const modeOpts = load('gt.opts', {});
@@ -300,9 +300,11 @@ const MODES = [
       o.to = to;
       return true;
     },
-    gen(o) {
+    keyed: true,
+    gen(o, key) {
       let n;
-      if (o.range === 'custom') n = rnd(o.from, o.to);
+      if (key !== undefined) n = key;
+      else if (o.range === 'custom') n = rnd(o.from, o.to);
       else if (o.range === '9') n = rnd(0, 9);
       else if (o.range === '10-20') n = rnd(10, 20);
       else if (o.range === '100') n = rnd(0, 100);
@@ -624,7 +626,7 @@ function renderMode(mode) {
   title.textContent = mode.title;
   const restored = parked && parked.mode === mode && parked.q && !parked.done ? parked : null;
   parked = null;
-  session = restored || { mode, opts: optsFor(mode), ok: 0, total: 0, count: 0, retry: [], seen: {}, q: null, done: false, answered: false };
+  session = restored || { mode, opts: optsFor(mode), ok: 0, total: 0, count: 0, ring: newRing(), slot: 0, seen: {}, q: null, done: false, answered: false };
   view.innerHTML = `
     <div class="opts">${(mode.options || []).map(op => `
       <div class="seg" data-key="${op.key}">${op.values.map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}</div>`).join('')}
@@ -642,7 +644,7 @@ function renderMode(mode) {
       session.opts[seg.dataset.key] = b.dataset.v;
       modeOpts[mode.id] = session.opts;
       save('gt.opts', modeOpts);
-      session.retry = [];
+      session.ring = newRing();
       session.seen = {};
       syncSegs();
       renderExtra();
@@ -669,7 +671,7 @@ function renderExtra() {
     if (!mode.readExtra(opts)) return;
     modeOpts[mode.id] = opts;
     save('gt.opts', modeOpts);
-    session.retry = [];
+    session.ring = newRing();
     session.seen = {};
     nextQuestion();
   };
@@ -685,7 +687,8 @@ function syncSegs() {
 
 function updateScore() {
   const s = session;
-  $('#rep').innerHTML = [s.q?.repeat ? '↻ повтор' : '', s.cheated && !s.done ? '<span class="peek">👀 подсмотрено</span>' : ''].filter(Boolean).join(' ');
+  const inRing = s.ring.filter(Boolean).length;
+  $('#rep').innerHTML = [s.q?.repeat ? `↻ повтор ${s.q.repeat.hits}/${RING_HITS}` : inRing ? `<span class="ring">↻ на повторе: ${inRing}</span>` : '', s.cheated && !s.done ? '<span class="peek">👀 подсмотрено</span>' : ''].filter(Boolean).join(' ');
   $('#progress').textContent = `${progressText(s.mode, s.opts)}${s.total ? ` · ✓ ${s.ok}/${s.total}` : ''}`;
 }
 
@@ -714,14 +717,19 @@ function scheduleAutoNext() {
   }
 }
 
+const RING_SIZE = 5;
+const RING_HITS = 3;
+const newRing = () => Array(RING_SIZE).fill(null);
+
 function pickFresh(s) {
+  const busy = new Set(s.ring.filter(Boolean).map(r => r.key));
   const streaks = items[scopeId(s.mode, s.opts)] || {};
   const prev = s.q?.key;
   let best = null, bestScore = Infinity;
   for (let i = 0; i < 40; i++) {
     const q = s.mode.gen(s.opts);
     const base = s.mode.freshScore ? s.mode.freshScore(q, streaks) : Math.min(streaks[q.key] || 0, 5);
-    const score = (q.key === prev ? 1000 : 0) + (s.seen[q.key] || 0) * 10 + base + Math.random();
+    const score = (q.key === prev ? 1000 : 0) + (busy.has(q.key) ? 500 : 0) + (s.seen[q.key] || 0) * 10 + base + Math.random();
     if (score < bestScore) { best = q; bestScore = score; }
   }
   return best;
@@ -737,13 +745,20 @@ function nextQuestion() {
   s.cheated = false;
   const ch = $('#cheat');
   if (ch) ch.open = false;
-  const due = s.retry.findIndex(r => r.due <= s.count && r.q !== s.q);
-  if (due >= 0) {
-    s.q = s.retry.splice(due, 1)[0].q;
-    s.q.repeat = true;
-    if (s.q.choices) s.q.choices = shuffle(s.q.choices);
+  s.slot = (s.count - 1) % RING_SIZE;
+  const r = s.ring[s.slot];
+  if (r) {
+    let nq = null;
+    if (cfg().varyRepeat && s.mode.keyed) {
+      for (let i = 0; i < 6 && (!nq || nq.prompt === r.q.prompt); i++) nq = s.mode.gen(s.opts, r.key);
+    }
+    if (nq) r.q = nq;
+    else if (r.q.choices) r.q.choices = shuffle(r.q.choices);
+    s.q = r.q;
+    s.q.repeat = r;
   } else {
     s.q = pickFresh(s);
+    s.q.repeat = null;
   }
   s.seen[s.q.key] = (s.seen[s.q.key] || 0) + 1;
   renderQuestion();
@@ -790,11 +805,12 @@ function grade(ok, given, feedback = true) {
   s.total++;
   if (ok) s.ok++;
   const q = s.q;
-  if (!ok) {
-    q.need = 2;
-    s.retry.push({ q, due: s.count + rnd(2, 5) });
-  } else if (q.need > 0 && --q.need > 0) {
-    s.retry.push({ q, due: s.count + rnd(5, 9) });
+  const r = s.ring[s.slot];
+  if (r && q.repeat === r) {
+    if (!ok) r.hits = 0;
+    else if (++r.hits >= RING_HITS) s.ring[s.slot] = null;
+  } else if (!ok) {
+    s.ring[s.slot] = { key: q.key, q, hits: 0 };
   }
   const st = (stats[s.mode.id] ||= { ok: 0, total: 0 });
   st.total++;
@@ -934,6 +950,8 @@ function renderSettings(modeId) {
       </label>
       <label class="row"><input type="checkbox" id="autoNext" ${c.autoNext ? 'checked' : ''}> Сразу дальше после правильного ответа${mark('autoNext')}</label>
       <label class="row"><input type="checkbox" id="waitSpeech" ${c.waitSpeech ? 'checked' : ''}> Не переключать, пока идёт озвучка${mark('waitSpeech')}</label>
+      <label class="row"><input type="checkbox" id="varyRepeat" ${c.varyRepeat ? 'checked' : ''}> Новый пример при повторе ошибки${mark('varyRepeat')}</label>
+      <p class="hint">Ошибка встаёт в круг из ${RING_SIZE} заданий и повторяется каждые ${RING_SIZE} вопросов, пока не ответишь правильно ${RING_HITS} раза подряд. Если галочка снята — повторяется та же фраза; если стоит — то же слово в другом примере (где примеры есть).</p>
       <label>Задержка перед следующим (считается от ответа): <b id="delayV">${c.autoNextDelay.toFixed(1)} с</b>${mark('autoNextDelay')}
         <input type="range" id="delay" min="0" max="5" step="0.1" value="${c.autoNextDelay}">
       </label>
@@ -958,6 +976,7 @@ function renderSettings(modeId) {
   $('#delay').oninput = e => { set('autoNextDelay', +e.target.value); $('#delayV').textContent = `${(+e.target.value).toFixed(1)} с`; };
   $('#autoNext').onchange = e => set('autoNext', e.target.checked);
   $('#waitSpeech').onchange = e => set('waitSpeech', e.target.checked);
+  $('#varyRepeat').onchange = e => set('varyRepeat', e.target.checked);
   $('#test').onclick = () => speak('Καλημέρα! Δεκατέσσερα ευρώ και εβδομήντα λεπτά.');
   if (mode) {
     $('#resetMode').onclick = () => { delete modeSettings[mode.id]; save('gt.modeSettings', modeSettings); renderSettings(mode.id); };
