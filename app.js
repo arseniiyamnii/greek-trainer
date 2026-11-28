@@ -61,9 +61,16 @@ function speakOne(text, mul, onend) {
   let started = false;
   u.onstart = () => { started = true; };
   u.onend = e => onend(started, e);
-  u.onerror = e => onend(started, e);
+  u.onerror = e => { lastSpeechError = e.error || 'error'; onend(started, e); };
+  if (speechSynthesis.paused) speechSynthesis.resume();
   speechSynthesis.speak(u);
 }
+
+let lastSpeechError = '';
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && window.speechSynthesis) { speechSynthesis.cancel(); speechSynthesis.resume(); }
+});
+window.addEventListener('pageshow', () => { if (window.speechSynthesis) { speechSynthesis.cancel(); speechSynthesis.resume(); } });
 
 function stopSpeech() {
   speakToken++;
@@ -956,6 +963,7 @@ function renderSettings(modeId) {
         <input type="range" id="delay" min="0" max="5" step="0.1" value="${c.autoNextDelay}">
       </label>
       <button class="wide" id="test">🔊 Проверить голос</button>
+      <p class="hint" id="diag"></p>
       ${mode ? `<button class="wide ghost2" id="resetMode">Вернуть общие настройки</button>
         <a class="wide btnlink" href="#/mode/${mode.id}">К упражнению</a>` : `<button class="wide ghost" id="reset">Сбросить статистику</button>
       <p class="hint">Установить как приложение: меню Chrome ⋮ → «Добавить на главный экран». После первой загрузки работает без интернета.</p>`}
@@ -977,7 +985,28 @@ function renderSettings(modeId) {
   $('#autoNext').onchange = e => set('autoNext', e.target.checked);
   $('#waitSpeech').onchange = e => set('waitSpeech', e.target.checked);
   $('#varyRepeat').onchange = e => set('varyRepeat', e.target.checked);
-  $('#test').onclick = () => speak('Καλημέρα! Δεκατέσσερα ευρώ και εβδομήντα λεπτά.');
+  $('#test').onclick = () => {
+    const d = $('#diag');
+    const all = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+    refreshVoices();
+    const v = voices.find(x => x.voiceURI === settings.voice) || voices[0];
+    const info = `Голосов всего: ${all.length}, греческих: ${voices.length}. Голос: ${v ? `${v.name}${v.localService ? '' : ' (онлайн)'}` : 'нет'}.`;
+    d.textContent = `${info} Говорю…`;
+    lastSpeechError = '';
+    const t0 = Date.now();
+    let started = false;
+    const u = new SpeechSynthesisUtterance('Καλημέρα!');
+    u.lang = 'el-GR';
+    if (v) u.voice = v;
+    u.rate = cfg().rate;
+    u.onstart = () => { started = true; d.textContent = `${info} Речь началась.`; };
+    u.onend = () => { d.textContent = `${info} ✓ Речь прошла (${((Date.now() - t0) / 1000).toFixed(1)} с).`; };
+    u.onerror = e => { d.textContent = `${info} ✗ Ошибка синтеза: ${e.error}.`; };
+    speechSynthesis.cancel();
+    speechSynthesis.resume();
+    speechSynthesis.speak(u);
+    setTimeout(() => { if (!started && d.textContent.endsWith('Говорю…')) d.textContent = `${info} ✗ Речь не началась за 5 с (speaking=${speechSynthesis.speaking}, pending=${speechSynthesis.pending}, paused=${speechSynthesis.paused}).`; }, 5000);
+  };
   if (mode) {
     $('#resetMode').onclick = () => { delete modeSettings[mode.id]; save('gt.modeSettings', modeSettings); renderSettings(mode.id); };
   } else {
